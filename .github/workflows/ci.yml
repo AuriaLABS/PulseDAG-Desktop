@@ -26,3 +26,4 @@ jobs:
       - run: npm run build
       - run: cargo check --manifest-path src-tauri/Cargo.toml
       - run: cargo test --manifest-path src-tauri/Cargo.toml observability_paths_are_exactly_allowlisted
+      - run: cargo test --manifest-path src-tauri/Cargo.toml entity_
