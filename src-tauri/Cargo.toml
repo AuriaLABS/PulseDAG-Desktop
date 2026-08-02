@@ -14,4 +14,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 tauri = { version = "2", features = [] }
+url = "2.5"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
