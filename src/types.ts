@@ -126,6 +126,79 @@ export type NodeObservability = {
   warnings: string[]
 }
 
+export type BlockOverview = {
+  hash: string
+  height: number
+  blueScore: number
+  timestamp: number
+  parentHashes: string[]
+  childHashes: string[]
+  txCount: number
+  txids: string[]
+  isTip: boolean
+  selectedTip: string | null
+  confirmations: number
+}
+
+export type BlockTransaction = {
+  txid: string
+  fee: number
+  inputs: number
+  outputs: number
+  context: string
+  isConfirmed: boolean
+  isMempool: boolean
+}
+
+export type BlockTransactions = {
+  blockHash: string
+  blockHeight: number
+  count: number
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
+  context: string
+  transactions: BlockTransaction[]
+}
+
+export type BlockDetail = {
+  fetchedAtMs: number
+  latencyMs: number
+  overview: BlockOverview
+  transactions: BlockTransactions
+}
+
+export type TransactionOutPoint = {
+  txid: string
+  index: number
+}
+
+export type TransactionOutput = {
+  address: string
+  amount: number
+}
+
+export type TransactionLookup = {
+  txid: string
+  status: string
+  isMempool: boolean
+  isConfirmed: boolean
+  fee: number
+  nonce: number
+  blockHash: string | null
+  blockHeight: number | null
+  confirmations: number | null
+  inputs: TransactionOutPoint[]
+  outputs: TransactionOutput[]
+}
+
+export type TransactionDetail = {
+  fetchedAtMs: number
+  latencyMs: number
+  transaction: TransactionLookup
+}
+
 export type LogEntry = {
   sequence: number
   timestampMs: number
