@@ -15,11 +15,32 @@ PulseDAG Desktop is the native operator client for running and observing a local
 - Captured stdout, stderr and desktop lifecycle messages with a bounded in-memory log buffer.
 - Redacted JSON diagnostic export covering runtime state, binary evidence, loopback health and captured logs.
 - Loopback-only RPC health checks against `GET /health`.
+- Native read-only observability through exact v2.3.0 API routes for node status, synchronization, mempool, PoW health and recent blocks.
+- Network workspace with chain identity, peer count, P2P mode, convergence gaps, readiness evidence and ledger pressure.
+- Live DAG workspace with the recent frontier, selected-tip evidence and exact recent-block fields.
 - Persistent non-sensitive preferences for executable path, data directory, RPC origin and configuration profile.
-- Overview, node, network, Live DAG, logs and settings workspaces.
 - CI for TypeScript, frontend production build and Rust validation.
 
-Network and Live DAG pages remain placeholders until the approved read-only node adapters are integrated.
+## Read-only observability boundary
+
+PulseDAG Desktop reads only the following exact local routes:
+
+- `GET /api/v1/status`
+- `GET /api/v1/blocks/recent?limit=20`
+- `GET /api/v1/sync/status`
+- `GET /api/v1/mempool`
+- `GET /api/v1/pow/health`
+
+The native adapter:
+
+1. Reuses the loopback-only RPC origin validation.
+2. Rejects every path outside the explicit observability allowlist.
+3. Disables HTTP redirects.
+4. Applies connection and request timeouts.
+5. Rejects responses larger than 1 MiB.
+6. Requires status and recent blocks, while allowing sync, mempool and PoW panels to degrade independently.
+
+The approved status contract exposes peer count and P2P mode, not individual peer identities or addresses. The desktop therefore does not infer a peer table. The recent-block route exposes parent count but not parent hashes, so the Live DAG page presents an exact frontier timeline instead of drawing synthetic edges.
 
 ## Release verification boundary
 
@@ -87,16 +108,16 @@ npm run typecheck
 npm run build
 ```
 
-Run the Rust check:
+Run the Rust check and observability allowlist test:
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml observability_paths_are_exactly_allowlisted
 ```
 
 ## Next milestone
 
-1. Read-only node status, synchronization and peer adapters.
-2. Adapt selected Live DAG and entity views from PulseDAG Explorer.
-3. Bind extracted binaries to verified archive provenance without storing privileged secrets.
-4. Add diagnostic schema tests and user-selectable log windows.
-5. Windows and Linux packaging workflows.
+1. Add bounded block detail and transaction drill-down views using approved GET routes.
+2. Bind extracted binaries to verified archive provenance without storing privileged secrets.
+3. Add diagnostic schema tests and user-selectable log windows.
+4. Add Windows and Linux packaging workflows.

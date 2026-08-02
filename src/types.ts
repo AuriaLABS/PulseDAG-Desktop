@@ -52,6 +52,80 @@ export type RpcHealth = {
   message: string
 }
 
+export type NodeStatusSnapshot = {
+  rpcResponseDegraded: boolean
+  rpcResponseStale: boolean
+  rpcResponseDegradedReason: string | null
+  networkId: string
+  service: string
+  version: string
+  chainId: string
+  bestHeight: number
+  blockCount: number
+  selectedTip: string | null
+  selectedHeight: number | null
+  consensusMode: string
+  tipCount: number
+  orphanCount: number
+  mempoolSize: number
+  snapshotHeight: number | null
+  persistedBlockCount: number
+  p2pMode: string | null
+  peerCount: number
+  syncState: string
+  storageBackend: string
+}
+
+export type SyncStatusSnapshot = {
+  rpcResponseDegraded: boolean
+  rpcResponseStale: boolean
+  consistencyOk: boolean
+  consistencyIssueCount: number
+  lagBlocks: number
+  syncState: string
+  networkSelectedHeightGap: number
+  storageReplayGap: number
+  liveSyncErrorActive: number
+  p2pReadyForPrivateRehearsal: boolean
+  readinessReasons: string[]
+}
+
+export type MempoolSnapshot = {
+  transactionCount: number
+  orphanTransactionCount: number
+  orphanLimit: number
+  spentOutpointsCount: number
+  txids: string[]
+}
+
+export type PowHealthSnapshot = {
+  status: string
+  snapshotCount: number
+  latestSuggestedDifficulty: number
+  latestAvgBlockIntervalSecs: number
+  alerts: string[]
+}
+
+export type RecentDagBlock = {
+  hash: string
+  height: number
+  blueScore: number
+  txCount: number
+  timestamp: number
+  parentCount: number
+}
+
+export type NodeObservability = {
+  fetchedAtMs: number
+  latencyMs: number
+  status: NodeStatusSnapshot
+  sync: SyncStatusSnapshot | null
+  mempool: MempoolSnapshot | null
+  pow: PowHealthSnapshot | null
+  blocks: RecentDagBlock[]
+  warnings: string[]
+}
+
 export type LogEntry = {
   sequence: number
   timestampMs: number
