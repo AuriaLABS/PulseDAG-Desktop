@@ -19,7 +19,7 @@ PulseDAG Desktop is the native operator client for running and observing a local
 - Network workspace with chain identity, peer count, P2P mode, convergence gaps, readiness evidence and ledger pressure.
 - Live DAG workspace with the recent frontier, selected-tip evidence and exact recent-block fields.
 - Persistent non-sensitive preferences for executable path, data directory, RPC origin and configuration profile.
-- CI for TypeScript, frontend production build and Rust validation.
+- CI for TypeScript, frontend production build, Rust validation and the observability route allowlist.
 
 ## Read-only observability boundary
 
