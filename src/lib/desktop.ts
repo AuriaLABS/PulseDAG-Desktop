@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import type {
   BinaryInfo,
+  BlockDetail,
   DesktopBridgeStatus,
   DiagnosticExportResult,
   LogBatch,
@@ -10,6 +11,7 @@ import type {
   NodeRuntimeStatus,
   ReleaseVerification,
   RpcHealth,
+  TransactionDetail,
 } from '../types'
 
 export const defaultPreferences: NodePreferences = {
@@ -115,6 +117,14 @@ export async function checkRpcHealth(endpoint: string): Promise<RpcHealth> {
 
 export async function getNodeObservability(endpoint: string): Promise<NodeObservability> {
   return invoke<NodeObservability>('get_node_observability', { endpoint })
+}
+
+export async function getBlockDetail(endpoint: string, hash: string): Promise<BlockDetail> {
+  return invoke<BlockDetail>('get_block_detail', { endpoint, hash })
+}
+
+export async function getTransactionDetail(endpoint: string, txid: string): Promise<TransactionDetail> {
+  return invoke<TransactionDetail>('get_transaction_detail', { endpoint, txid })
 }
 
 export async function startNode(preferences: NodePreferences): Promise<NodeRuntimeStatus> {

@@ -17,13 +17,13 @@ PulseDAG Desktop is the native operator client for running and observing a local
 - Loopback-only RPC health checks against `GET /health`.
 - Native read-only observability through exact v2.3.0 API routes for node status, synchronization, mempool, PoW health and recent blocks.
 - Network workspace with chain identity, peer count, P2P mode, convergence gaps, readiness evidence and ledger pressure.
-- Live DAG workspace with the recent frontier, selected-tip evidence and exact recent-block fields.
+- Live DAG workspace with the recent frontier, selected-tip evidence, real block relations, confirmed block transactions and bounded transaction lookup.
 - Persistent non-sensitive preferences for executable path, data directory, RPC origin and configuration profile.
-- CI for TypeScript, frontend production build, Rust validation and the observability route allowlist.
+- CI for TypeScript, frontend production build, Rust validation and read-only route guards.
 
 ## Read-only observability boundary
 
-PulseDAG Desktop reads only the following exact local routes:
+PulseDAG Desktop continuously reads only the following exact local routes:
 
 - `GET /api/v1/status`
 - `GET /api/v1/blocks/recent?limit=20`
@@ -40,7 +40,17 @@ The native adapter:
 5. Rejects responses larger than 1 MiB.
 6. Requires status and recent blocks, while allowing sync, mempool and PoW panels to degrade independently.
 
-The approved status contract exposes peer count and P2P mode, not individual peer identities or addresses. The desktop therefore does not infer a peer table. The recent-block route exposes parent count but not parent hashes, so the Live DAG page presents an exact frontier timeline instead of drawing synthetic edges.
+The approved status contract exposes peer count and P2P mode, not individual peer identities or addresses. The desktop therefore does not infer a peer table. The recent-block route exposes parent count but not parent hashes, so the frontier itself remains an exact timeline rather than a synthetic graph.
+
+## Bounded entity drill-down
+
+Block and transaction inspection uses only identifiers returned by the node and accepts exactly 64 hexadecimal characters. The backend constructs only these routes:
+
+- `GET /api/v1/blocks/<64-hex-hash>/overview`
+- `GET /api/v1/blocks/<64-hex-hash>/transactions?limit=100&offset=0`
+- `GET /api/v1/txs/<64-hex-txid>/lookup`
+
+The desktop does not accept free-form paths, query strings or arbitrary entity identifiers. Block transactions are capped at the first 100 records and the interface reports when the node says more records exist. Parent, child, block and transaction navigation remains inside the same guarded commands.
 
 ## Release verification boundary
 
@@ -82,6 +92,7 @@ The bundle contains no wallet, signing, mining or operator-token fields. Users s
 - Administrative, wallet, mining and transaction-submission capabilities are not exposed.
 - Credentials and operator tokens are not accepted by the frontend or stored in local preferences.
 - RPC URLs containing credentials, query strings, fragments or non-loopback hosts are rejected.
+- Entity identifiers are fixed-length hexadecimal values and cannot inject paths, queries or fragments.
 - The frontend receives explicit status objects and invokes narrowly scoped Tauri commands.
 - Graceful stop uses `SIGTERM` on Unix, followed by a forced stop after five seconds when required.
 - Launch-on-startup remains disabled until crash recovery and ownership policies are defined.
@@ -108,16 +119,16 @@ npm run typecheck
 npm run build
 ```
 
-Run the Rust check and observability allowlist test:
+Run the Rust checks and read-only route tests:
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml observability_paths_are_exactly_allowlisted
+cargo test --manifest-path src-tauri/Cargo.toml entity_
 ```
 
 ## Next milestone
 
-1. Add bounded block detail and transaction drill-down views using approved GET routes.
-2. Bind extracted binaries to verified archive provenance without storing privileged secrets.
-3. Add diagnostic schema tests and user-selectable log windows.
-4. Add Windows and Linux packaging workflows.
+1. Bind extracted binaries to verified archive provenance without storing privileged secrets.
+2. Add diagnostic schema tests and user-selectable log windows.
+3. Add Windows and Linux packaging workflows.
