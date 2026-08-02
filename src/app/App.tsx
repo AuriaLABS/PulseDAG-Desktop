@@ -4,14 +4,20 @@ import {
   checkRpcHealth,
   clearNodeLogs,
   discoverNodeBinary,
+  exportDiagnostics,
   getDesktopBridgeStatus,
   getNodeLogs,
   getNodeStatus,
   loadNodePreferences,
   saveNodePreferences,
+  selectDataDirectory,
+  selectDiagnosticOutput,
+  selectNodeBinary,
+  selectReleaseArchive,
   startNode,
   stopNode,
   validateNodeBinary,
+  verifyApprovedReleaseArchive,
 } from '../lib/desktop'
 import { LogsPage } from '../pages/LogsPage'
 import { NodePage } from '../pages/NodePage'
@@ -22,9 +28,11 @@ import type {
   AppSection,
   BinaryInfo,
   DesktopBridgeStatus,
+  DiagnosticExportResult,
   LogEntry,
   NodePreferences,
   NodeRuntimeStatus,
+  ReleaseVerification,
   RpcHealth,
 } from '../types'
 
@@ -63,6 +71,8 @@ export function App() {
   const [bridge, setBridge] = useState<DesktopBridgeStatus | null>(null)
   const [preferences, setPreferences] = useState<NodePreferences>(() => loadNodePreferences())
   const [binaryInfo, setBinaryInfo] = useState<BinaryInfo | null>(null)
+  const [releaseVerification, setReleaseVerification] = useState<ReleaseVerification | null>(null)
+  const [diagnosticExport, setDiagnosticExport] = useState<DiagnosticExportResult | null>(null)
   const [nodeStatus, setNodeStatus] = useState<NodeRuntimeStatus>(initialNodeStatus)
   const [rpcHealth, setRpcHealth] = useState<RpcHealth>(initialRpcHealth)
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -153,6 +163,44 @@ export function App() {
     }
   }
 
+  async function handlePickExecutable(): Promise<string | null> {
+    try {
+      const path = await selectNodeBinary()
+      setOperationError('')
+      return path
+    } catch (error) {
+      setOperationError(readableError(error))
+      return null
+    }
+  }
+
+  async function handlePickDataDirectory(): Promise<string | null> {
+    try {
+      const path = await selectDataDirectory()
+      setOperationError('')
+      return path
+    } catch (error) {
+      setOperationError(readableError(error))
+      return null
+    }
+  }
+
+  async function handleVerifyRelease(): Promise<ReleaseVerification | null> {
+    try {
+      setOperationError('')
+      const path = await selectReleaseArchive()
+      if (!path) return null
+      const verification = await verifyApprovedReleaseArchive(path)
+      setReleaseVerification(verification)
+      setOperationError(verification.approved ? '' : verification.message)
+      return verification
+    } catch (error) {
+      setReleaseVerification(null)
+      setOperationError(readableError(error))
+      return null
+    }
+  }
+
   function savePreferences(next: NodePreferences) {
     const pathChanged = next.executablePath !== preferences.executablePath
     saveNodePreferences(next)
@@ -186,6 +234,15 @@ export function App() {
       await clearNodeLogs()
       logCursor.current = 0
       setLogs([])
+      setDiagnosticExport(null)
+    })
+  }
+
+  function handleExportDiagnostics() {
+    void perform(async () => {
+      const outputPath = await selectDiagnosticOutput()
+      if (!outputPath) return
+      setDiagnosticExport(await exportDiagnostics(outputPath, preferences, rpcHealth))
     })
   }
 
@@ -229,15 +286,29 @@ export function App() {
       <SettingsPage
         value={preferences}
         binaryInfo={binaryInfo}
+        releaseVerification={releaseVerification}
         busy={busy}
         error={operationError}
         onSave={savePreferences}
         onDetect={handleDiscover}
         onValidate={handleValidate}
+        onPickExecutable={handlePickExecutable}
+        onPickDataDirectory={handlePickDataDirectory}
+        onVerifyRelease={handleVerifyRelease}
       />
     )
   } else if (section === 'logs') {
-    content = <LogsPage entries={logs} running={nodeStatus.running} onClear={handleClearLogs} />
+    content = (
+      <LogsPage
+        entries={logs}
+        running={nodeStatus.running}
+        busy={busy}
+        error={operationError}
+        exportResult={diagnosticExport}
+        onClear={handleClearLogs}
+        onExport={handleExportDiagnostics}
+      />
+    )
   } else if (section === 'network') {
     content = <PlaceholderPage eyebrow="Network observability" title="Peers and synchronization" description="This area will consume approved local status endpoints and present sync lag, peer health and connection history." items={['Peer table', 'Sync progress', 'Connection health', 'Network identity']} />
   } else {

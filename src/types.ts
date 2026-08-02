@@ -24,6 +24,18 @@ export type BinaryInfo = {
   executable: boolean
 }
 
+export type ReleaseVerification = {
+  archivePath: string
+  archiveName: string
+  sizeBytes: number
+  sha256: string
+  releaseTag: string
+  sourceCommit: string
+  assetDigest: string
+  approved: boolean
+  message: string
+}
+
 export type NodeRuntimeStatus = {
   running: boolean
   pid: number | null
@@ -50,4 +62,10 @@ export type LogEntry = {
 export type LogBatch = {
   entries: LogEntry[]
   nextCursor: number
+}
+
+export type DiagnosticExportResult = {
+  path: string
+  bytesWritten: number
+  logEntries: number
 }
