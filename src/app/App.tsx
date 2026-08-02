@@ -7,6 +7,7 @@ import {
   exportDiagnostics,
   getDesktopBridgeStatus,
   getNodeLogs,
+  getNodeObservability,
   getNodeStatus,
   loadNodePreferences,
   saveNodePreferences,
@@ -19,10 +20,11 @@ import {
   validateNodeBinary,
   verifyApprovedReleaseArchive,
 } from '../lib/desktop'
+import { LiveDagPage } from '../pages/LiveDagPage'
 import { LogsPage } from '../pages/LogsPage'
+import { NetworkPage } from '../pages/NetworkPage'
 import { NodePage } from '../pages/NodePage'
 import { OverviewPage } from '../pages/OverviewPage'
-import { PlaceholderPage } from '../pages/PlaceholderPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import type {
   AppSection,
@@ -30,6 +32,7 @@ import type {
   DesktopBridgeStatus,
   DiagnosticExportResult,
   LogEntry,
+  NodeObservability,
   NodePreferences,
   NodeRuntimeStatus,
   ReleaseVerification,
@@ -75,6 +78,9 @@ export function App() {
   const [diagnosticExport, setDiagnosticExport] = useState<DiagnosticExportResult | null>(null)
   const [nodeStatus, setNodeStatus] = useState<NodeRuntimeStatus>(initialNodeStatus)
   const [rpcHealth, setRpcHealth] = useState<RpcHealth>(initialRpcHealth)
+  const [observability, setObservability] = useState<NodeObservability | null>(null)
+  const [observabilityError, setObservabilityError] = useState('')
+  const [observabilityLoading, setObservabilityLoading] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [busy, setBusy] = useState(false)
   const [operationError, setOperationError] = useState('')
@@ -98,11 +104,37 @@ export function App() {
     setRpcHealth(nextRpc)
   }, [preferences.rpcEndpoint])
 
+  const refreshObservability = useCallback(async () => {
+    setObservabilityLoading(true)
+    try {
+      const snapshot = await getNodeObservability(preferences.rpcEndpoint)
+      setObservability(snapshot)
+      setObservabilityError('')
+    } catch (error) {
+      setObservabilityError(readableError(error))
+    } finally {
+      setObservabilityLoading(false)
+    }
+  }, [preferences.rpcEndpoint])
+
   useEffect(() => {
     void refreshRuntime()
     const timer = window.setInterval(() => void refreshRuntime(), 2_000)
     return () => window.clearInterval(timer)
   }, [refreshRuntime])
+
+  useEffect(() => {
+    if (!rpcHealth.reachable) {
+      setObservabilityError(nodeStatus.running
+        ? 'The local RPC is not ready for read-only observability yet.'
+        : 'Start the local node to load network and DAG data.')
+      return
+    }
+
+    void refreshObservability()
+    const timer = window.setInterval(() => void refreshObservability(), 5_000)
+    return () => window.clearInterval(timer)
+  }, [nodeStatus.running, refreshObservability, rpcHealth.reachable])
 
   useEffect(() => {
     async function pollLogs() {
@@ -203,9 +235,14 @@ export function App() {
 
   function savePreferences(next: NodePreferences) {
     const pathChanged = next.executablePath !== preferences.executablePath
+    const endpointChanged = next.rpcEndpoint !== preferences.rpcEndpoint
     saveNodePreferences(next)
     setPreferences(next)
     if (pathChanged) setBinaryInfo(null)
+    if (endpointChanged) {
+      setObservability(null)
+      setObservabilityError('')
+    }
     setOperationError('')
   }
 
@@ -244,6 +281,10 @@ export function App() {
       if (!outputPath) return
       setDiagnosticExport(await exportDiagnostics(outputPath, preferences, rpcHealth))
     })
+  }
+
+  function handleRefreshAll() {
+    void Promise.all([refreshRuntime(), refreshObservability()])
   }
 
   const heading = sectionTitles[section]
@@ -310,9 +351,25 @@ export function App() {
       />
     )
   } else if (section === 'network') {
-    content = <PlaceholderPage eyebrow="Network observability" title="Peers and synchronization" description="This area will consume approved local status endpoints and present sync lag, peer health and connection history." items={['Peer table', 'Sync progress', 'Connection health', 'Network identity']} />
+    content = (
+      <NetworkPage
+        snapshot={observability}
+        loading={observabilityLoading}
+        error={observabilityError}
+        rpcReachable={rpcHealth.reachable}
+        onRefresh={() => void refreshObservability()}
+      />
+    )
   } else {
-    content = <PlaceholderPage eyebrow="Consensus visualization" title="Live DAG workspace" description="The explorer DAG components will be adapted for local node data without exposing operator controls to the public web client." items={['Realtime block graph', 'Tip selection', 'Block inspector', 'Performance timeline']} />
+    content = (
+      <LiveDagPage
+        snapshot={observability}
+        loading={observabilityLoading}
+        error={observabilityError}
+        rpcReachable={rpcHealth.reachable}
+        onRefresh={() => void refreshObservability()}
+      />
+    )
   }
 
   return (
@@ -323,7 +380,7 @@ export function App() {
           <div><span className="eyebrow">{heading.eyebrow}</span><h1>{heading.title}</h1></div>
           <div className="topbar-actions">
             <span className={`sync-pill ${online ? 'online' : 'warning'}`}><i />{connectionLabel}{nodeStatus.pid ? ` · PID ${nodeStatus.pid}` : ''}</span>
-            <button className="icon-button" onClick={() => void refreshRuntime()} aria-label="Refresh node status">↻</button>
+            <button className="icon-button" onClick={handleRefreshAll} aria-label="Refresh node status and read-only data">↻</button>
             <button className="icon-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">{theme === 'dark' ? '☼' : '◐'}</button>
           </div>
         </header>

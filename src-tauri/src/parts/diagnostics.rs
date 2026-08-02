@@ -124,6 +124,7 @@ pub fn run() {
             start_node,
             stop_node,
             check_rpc_health,
+            get_node_observability,
             get_node_logs,
             clear_node_logs,
             export_diagnostics,

@@ -5,6 +5,7 @@ import type {
   DesktopBridgeStatus,
   DiagnosticExportResult,
   LogBatch,
+  NodeObservability,
   NodePreferences,
   NodeRuntimeStatus,
   ReleaseVerification,
@@ -110,6 +111,10 @@ export async function checkRpcHealth(endpoint: string): Promise<RpcHealth> {
       message: error instanceof Error ? error.message : String(error),
     }
   }
+}
+
+export async function getNodeObservability(endpoint: string): Promise<NodeObservability> {
+  return invoke<NodeObservability>('get_node_observability', { endpoint })
 }
 
 export async function startNode(preferences: NodePreferences): Promise<NodeRuntimeStatus> {
