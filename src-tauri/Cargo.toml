@@ -1,0 +1,22 @@
+[package]
+name = "pulsedag-desktop"
+version = "0.1.0"
+description = "Secure desktop control plane for a local PulseDAG node"
+authors = ["AuriaLABS"]
+edition = "2021"
+
+[lib]
+name = "pulsedag_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+tauri = { version = "2", features = [] }
+url = "2.5"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
