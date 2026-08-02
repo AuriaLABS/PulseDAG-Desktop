@@ -1,6 +1,8 @@
 .notice { margin-bottom: 14px; padding: 13px 15px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); color: var(--muted); font-size: 12px; line-height: 1.55; }
 .notice-warning { border-color: rgba(255, 200, 87, .28); background: rgba(255, 200, 87, .06); color: var(--amber); }
 .notice-error { border-color: rgba(255, 111, 125, .3); background: rgba(255, 111, 125, .07); color: var(--red); }
+.notice-success { border-color: rgba(84, 232, 173, .28); background: rgba(84, 232, 173, .06); color: var(--green); }
+.notice code { overflow-wrap: anywhere; font: 400 10px/1.5 'DM Mono', monospace; }
 .inline-notice { margin: 18px 0 0; }
 .sync-pill.online i { background: var(--green); box-shadow: 0 0 10px var(--green); }
 .status-badge.success { color: var(--green); border-color: rgba(84, 232, 173, .3); background: rgba(84, 232, 173, .06); }
@@ -10,16 +12,31 @@
 .lower-grid { margin-top: 14px; }
 .hash-row { align-items: flex-start; }
 .hash-row strong { max-width: 68%; overflow-wrap: anywhere; text-align: right; font-family: 'DM Mono', monospace; font-size: 10px; }
+.input-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.input-action-row input { min-width: 0; }
 .field-actions { margin-top: -6px; margin-bottom: 20px; }
 .validation-card { display: grid; grid-template-columns: 1fr auto; gap: 7px 18px; margin: -6px 0 22px; padding: 14px; border: 1px solid rgba(84, 232, 173, .24); border-radius: 11px; background: rgba(84, 232, 173, .05); }
 .validation-card span { color: var(--muted); font-size: 11px; }
 .validation-card code { grid-column: 1 / -1; color: var(--green); overflow-wrap: anywhere; font: 400 10px/1.55 'DM Mono', monospace; }
 .disabled-setting { opacity: .72; }
 .compact-details { margin-top: 28px; }
-.logs-panel { min-height: 660px; display: grid; grid-template-rows: auto minmax(0, 1fr); }
-.logs-actions { display: flex; gap: 8px; align-items: center; }
+.settings-side-stack { display: grid; gap: 14px; align-content: start; }
+.settings-side-stack .settings-aside { position: static; }
+.full-width-button { width: 100%; justify-content: center; margin-top: 18px; }
+.release-result { display: grid; gap: 7px; margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 11px; background: rgba(147, 170, 214, .04); }
+.release-result.approved { border-color: rgba(84, 232, 173, .3); background: rgba(84, 232, 173, .06); }
+.release-result.rejected { border-color: rgba(255, 111, 125, .3); background: rgba(255, 111, 125, .06); }
+.release-result strong { color: var(--text); }
+.release-result span, .release-result small { color: var(--muted); font-size: 10px; line-height: 1.55; }
+.release-result code { color: var(--cyan); overflow-wrap: anywhere; font: 400 9px/1.55 'DM Mono', monospace; }
+.release-result.approved code { color: var(--green); }
+.release-result.rejected code { color: var(--red); }
+.release-boundary { margin: 14px 0 0; }
+.logs-panel { min-height: 660px; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); }
+.logs-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
 .compact-button { min-height: 34px; padding: 0 12px; font-size: 11px; }
-.log-console { min-height: 0; max-height: calc(100vh - 190px); overflow: auto; margin-top: 20px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(3, 5, 10, .82); font-family: 'DM Mono', monospace; }
+.diagnostic-boundary { margin-top: 14px; padding: 10px 12px; border-left: 2px solid var(--violet); color: var(--muted); font-size: 10px; line-height: 1.55; }
+.log-console { min-height: 0; max-height: calc(100vh - 260px); overflow: auto; margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(3, 5, 10, .82); font-family: 'DM Mono', monospace; }
 :root[data-theme='light'] .log-console { background: #101521; color: #eef2ff; }
 .log-line { display: grid; grid-template-columns: 88px 62px minmax(0, 1fr); gap: 10px; padding: 6px 7px; border-bottom: 1px solid rgba(147, 170, 214, .08); align-items: start; }
 .log-line time, .log-line span { color: #7f8aa3; font-size: 9px; text-transform: uppercase; }
@@ -29,4 +46,6 @@
 .log-empty { color: #7f8aa3; padding: 18px; font-size: 11px; }
 @media (max-width: 1180px) {
   .log-line { grid-template-columns: 78px 55px minmax(0, 1fr); }
+  .input-action-row { grid-template-columns: 1fr; }
+  .input-action-row .compact-button { justify-self: start; }
 }

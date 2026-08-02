@@ -1,10 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
+import { open, save } from '@tauri-apps/plugin-dialog'
 import type {
   BinaryInfo,
   DesktopBridgeStatus,
+  DiagnosticExportResult,
   LogBatch,
   NodePreferences,
   NodeRuntimeStatus,
+  ReleaseVerification,
   RpcHealth,
 } from '../types'
 
@@ -25,6 +28,10 @@ const stoppedStatus: NodeRuntimeStatus = {
   executablePath: null,
 }
 
+function selectedPath(value: string | string[] | null): string | null {
+  return typeof value === 'string' ? value : null
+}
+
 export async function getDesktopBridgeStatus(): Promise<DesktopBridgeStatus> {
   try {
     return await invoke<DesktopBridgeStatus>('get_desktop_status')
@@ -39,12 +46,49 @@ export async function getDesktopBridgeStatus(): Promise<DesktopBridgeStatus> {
   }
 }
 
+export async function selectNodeBinary(): Promise<string | null> {
+  return selectedPath(await open({
+    title: 'Select the pulsedagd executable',
+    directory: false,
+    multiple: false,
+  }))
+}
+
+export async function selectDataDirectory(): Promise<string | null> {
+  return selectedPath(await open({
+    title: 'Select the persistent PulseDAG data directory',
+    directory: true,
+    multiple: false,
+  }))
+}
+
+export async function selectReleaseArchive(): Promise<string | null> {
+  return selectedPath(await open({
+    title: 'Select an official PulseDAG v2.3.0 release archive',
+    directory: false,
+    multiple: false,
+    filters: [{ name: 'Release archives', extensions: ['zip', 'gz'] }],
+  }))
+}
+
+export async function selectDiagnosticOutput(): Promise<string | null> {
+  return save({
+    title: 'Export redacted PulseDAG diagnostics',
+    defaultPath: 'pulsedag-diagnostics.json',
+    filters: [{ name: 'JSON diagnostics', extensions: ['json'] }],
+  })
+}
+
 export async function discoverNodeBinary(): Promise<BinaryInfo | null> {
   return invoke<BinaryInfo | null>('discover_node_binary')
 }
 
 export async function validateNodeBinary(path: string): Promise<BinaryInfo> {
   return invoke<BinaryInfo>('validate_node_binary', { path })
+}
+
+export async function verifyApprovedReleaseArchive(path: string): Promise<ReleaseVerification> {
+  return invoke<ReleaseVerification>('verify_approved_release_archive', { path })
 }
 
 export async function getNodeStatus(): Promise<NodeRuntimeStatus> {
@@ -93,6 +137,23 @@ export async function getNodeLogs(after = 0, limit = 250): Promise<LogBatch> {
 
 export async function clearNodeLogs(): Promise<void> {
   await invoke('clear_node_logs')
+}
+
+export async function exportDiagnostics(
+  outputPath: string,
+  preferences: NodePreferences,
+  rpcHealth: RpcHealth,
+): Promise<DiagnosticExportResult> {
+  return invoke<DiagnosticExportResult>('export_diagnostics', {
+    outputPath,
+    config: {
+      executablePath: preferences.executablePath,
+      rpcEndpoint: preferences.rpcEndpoint,
+      dataDirectory: preferences.dataDirectory,
+      configProfile: preferences.configProfile,
+    },
+    rpcHealth,
+  })
 }
 
 export function loadNodePreferences(): NodePreferences {
