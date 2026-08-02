@@ -214,7 +214,7 @@ async fn get_node_observability(endpoint: String) -> Result<NodeObservability, S
         request_rpc_data(&client, &endpoint, OBSERVABILITY_BLOCKS_PATH, "Recent blocks").await?;
 
     let mut warnings = Vec::new();
-    let sync = optional_rpc_data(
+    let sync: Option<SyncStatusData> = optional_rpc_data(
         &client,
         &endpoint,
         OBSERVABILITY_SYNC_PATH,
@@ -222,7 +222,7 @@ async fn get_node_observability(endpoint: String) -> Result<NodeObservability, S
         &mut warnings,
     )
     .await;
-    let mempool = optional_rpc_data(
+    let mempool: Option<MempoolData> = optional_rpc_data(
         &client,
         &endpoint,
         OBSERVABILITY_MEMPOOL_PATH,
@@ -230,7 +230,7 @@ async fn get_node_observability(endpoint: String) -> Result<NodeObservability, S
         &mut warnings,
     )
     .await;
-    let pow = optional_rpc_data(
+    let pow: Option<PowHealthData> = optional_rpc_data(
         &client,
         &endpoint,
         OBSERVABILITY_POW_PATH,
