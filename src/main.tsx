@@ -4,6 +4,7 @@ import { App } from './app/App'
 import './styles.css'
 import './runtime.css'
 import './entity.css'
+import './provenance.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
