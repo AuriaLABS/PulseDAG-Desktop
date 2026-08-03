@@ -27,6 +27,7 @@ fn export_diagnostics(
         sha256: info.sha256,
         executable: info.executable,
     });
+    let provenance = diagnostic_binary_provenance(&state);
     let safe_rpc_endpoint = parse_local_rpc_endpoint(&config.rpc_endpoint)
         .map(|parsed| format!("http://{}", parsed.host_header))
         .unwrap_or_else(|_| "<invalid-or-redacted>".into());
@@ -50,7 +51,7 @@ fn export_diagnostics(
         })
         .collect::<Vec<_>>();
     let bundle = DiagnosticBundle {
-        schema_version: 1,
+        schema_version: 2,
         desktop: DiagnosticDesktop {
             app_version: app.package_info().version.to_string(),
             platform: env::consts::OS.to_string(),
@@ -63,6 +64,7 @@ fn export_diagnostics(
             config_profile: safe_profile,
         },
         binary,
+        provenance,
         runtime: NodeRuntimeStatus {
             executable_path: runtime
                 .executable_path
@@ -120,6 +122,8 @@ pub fn run() {
             discover_node_binary,
             validate_node_binary,
             verify_approved_release_archive,
+            bind_binary_to_verified_archive,
+            get_binary_provenance,
             get_node_status,
             start_node,
             stop_node,
