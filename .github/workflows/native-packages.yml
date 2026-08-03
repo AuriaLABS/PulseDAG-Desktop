@@ -1,0 +1,168 @@
+name: Native packages
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/scripts/fetch-approved-release.mjs"
+      - ".github/workflows/native-packages.yml"
+      - "package.json"
+      - "src/**"
+      - "src-tauri/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/fetch-approved-release.mjs"
+      - ".github/workflows/native-packages.yml"
+      - "package.json"
+      - "src/**"
+      - "src-tauri/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x86_64
+            os: ubuntu-24.04
+            release_asset: pulsedagd-v2.3.0-x86_64-unknown-linux-gnu.tar.gz
+            bundles: deb,appimage
+            artifact: pulsedag-desktop-linux-x86_64-unsigned
+          - label: Windows x86_64
+            os: windows-2022
+            release_asset: pulsedagd-v2.3.0-x86_64-pc-windows-msvc.zip
+            bundles: nsis,msi
+            artifact: pulsedag-desktop-windows-x86_64-unsigned
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux bundle dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Install JavaScript dependencies
+        run: npm install
+
+      - name: Download and verify approved node release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node .github/scripts/fetch-approved-release.mjs
+          --asset "${{ matrix.release_asset }}"
+          --output "${{ runner.temp }}/pulsedag-approved-release"
+
+      - name: Extract approved Linux node
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          extract_dir="$RUNNER_TEMP/pulsedag-approved-release/extracted"
+          mkdir -p "$extract_dir"
+          tar -xzf "$PULSEDAG_PROVENANCE_ARCHIVE" -C "$extract_dir"
+          binary_path="$extract_dir/$PULSEDAG_RELEASE_ARCHIVE_ROOT/$PULSEDAG_RELEASE_BINARY_NAME"
+          test -f "$binary_path"
+          chmod +x "$binary_path"
+          echo "PULSEDAG_PROVENANCE_BINARY=$binary_path" >> "$GITHUB_ENV"
+
+      - name: Extract approved Windows node
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $extractDir = Join-Path $env:RUNNER_TEMP "pulsedag-approved-release\extracted"
+          New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+          Expand-Archive -LiteralPath $env:PULSEDAG_PROVENANCE_ARCHIVE -DestinationPath $extractDir
+          $binaryPath = Join-Path $extractDir "$env:PULSEDAG_RELEASE_ARCHIVE_ROOT\$env:PULSEDAG_RELEASE_BINARY_NAME"
+          if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
+            throw "The approved archive did not extract the expected pulsedagd binary."
+          }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_PROVENANCE_BINARY=$binaryPath"
+
+      - name: Rehearse official provenance and private launch admission
+        run: >-
+          cargo test
+          --manifest-path src-tauri/Cargo.toml
+          provenance_official_release_rehearsal
+          -- --ignored --nocapture
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+
+      - name: Build unsigned native bundles
+        run: npm run tauri build -- --bundles ${{ matrix.bundles }}
+
+      - name: Stage Linux bundles and checksums
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging="$GITHUB_WORKSPACE/package-artifacts"
+          mkdir -p "$staging"
+          find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -exec cp '{}' "$staging/" ';'
+          find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -exec cp '{}' "$staging/" ';'
+          test "$(find "$staging" -maxdepth 1 -type f | wc -l)" -ge 2
+          cp "$PULSEDAG_RELEASE_EVIDENCE" "$staging/OFFICIAL_NODE_RELEASE_EVIDENCE.json"
+          (
+            cd "$staging"
+            sha256sum -- *.deb *.AppImage OFFICIAL_NODE_RELEASE_EVIDENCE.json > SHA256SUMS.txt
+          )
+
+      - name: Stage Windows bundles and checksums
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $staging = Join-Path $env:GITHUB_WORKSPACE "package-artifacts"
+          New-Item -ItemType Directory -Force -Path $staging | Out-Null
+          $bundles = @()
+          $bundles += Get-ChildItem -Path "src-tauri\target\release\bundle\msi\*.msi" -File
+          $bundles += Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*.exe" -File
+          if ($bundles.Count -lt 2) {
+            throw "Expected both MSI and NSIS bundles."
+          }
+          $bundles | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $staging }
+          Copy-Item -LiteralPath $env:PULSEDAG_RELEASE_EVIDENCE -Destination (Join-Path $staging "OFFICIAL_NODE_RELEASE_EVIDENCE.json")
+          $checksumLines = Get-ChildItem -LiteralPath $staging -File |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            }
+          Set-Content -LiteralPath (Join-Path $staging "SHA256SUMS.txt") -Value $checksumLines
+
+      - name: Upload unsigned package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: package-artifacts
+          if-no-files-found: error
+          retention-days: 14
