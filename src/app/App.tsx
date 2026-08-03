@@ -9,6 +9,7 @@ import {
   getBinaryProvenance,
   getDesktopBridgeStatus,
   getNodeLogs,
+  getNodeLogTail,
   getNodeObservability,
   getNodeStatus,
   loadNodePreferences,
@@ -35,6 +36,7 @@ import type {
   DesktopBridgeStatus,
   DiagnosticExportResult,
   LogEntry,
+  LogWindowSize,
   NodeObservability,
   NodePreferences,
   NodeRuntimeStatus,
@@ -144,18 +146,30 @@ export function App() {
   }, [nodeStatus.running, refreshObservability, rpcHealth.reachable])
 
   useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+
     async function pollLogs() {
       const batch = await getNodeLogs(logCursor.current, 300)
-      if (batch.entries.length > 0) {
-        logCursor.current = batch.nextCursor
-        setLogs((current) => [...current, ...batch.entries].slice(-2_000))
-      }
+      if (cancelled || batch.entries.length === 0) return
+      logCursor.current = batch.nextCursor
+      setLogs((current) => [...current, ...batch.entries].slice(-preferences.logWindow))
     }
 
-    void pollLogs()
-    const timer = window.setInterval(() => void pollLogs(), nodeStatus.running ? 800 : 2_000)
-    return () => window.clearInterval(timer)
-  }, [nodeStatus.running])
+    async function hydrateLogWindow() {
+      const batch = await getNodeLogTail(preferences.logWindow)
+      if (cancelled) return
+      logCursor.current = batch.nextCursor
+      setLogs(batch.entries)
+      timer = window.setInterval(() => void pollLogs(), nodeStatus.running ? 800 : 2_000)
+    }
+
+    void hydrateLogWindow()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearInterval(timer)
+    }
+  }, [nodeStatus.running, preferences.logWindow])
 
   async function perform(action: () => Promise<void>) {
     setBusy(true)
@@ -284,6 +298,11 @@ export function App() {
     setOperationError('')
   }
 
+  function handleLogWindowChange(logWindow: LogWindowSize) {
+    savePreferences({ ...preferences, logWindow })
+    setDiagnosticExport(null)
+  }
+
   function handleStart() {
     void perform(async () => {
       saveNodePreferences(preferences)
@@ -386,6 +405,8 @@ export function App() {
         busy={busy}
         error={operationError}
         exportResult={diagnosticExport}
+        windowSize={preferences.logWindow}
+        onWindowSizeChange={handleLogWindowChange}
         onClear={handleClearLogs}
         onExport={handleExportDiagnostics}
       />
