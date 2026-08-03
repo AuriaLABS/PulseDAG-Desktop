@@ -36,6 +36,22 @@ export type ReleaseVerification = {
   message: string
 }
 
+export type BinaryProvenance = {
+  archiveName: string
+  archiveSha256: string
+  releaseTag: string
+  sourceCommit: string
+  target: string
+  embeddedPath: string
+  embeddedBinarySha256: string
+  embeddedBinarySizeBytes: number
+  selectedBinarySha256: string
+  selectedBinarySizeBytes: number
+  linkedAtMs: number
+  approved: boolean
+  message: string
+}
+
 export type NodeRuntimeStatus = {
   running: boolean
   pid: number | null
