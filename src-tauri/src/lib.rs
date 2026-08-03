@@ -5,3 +5,5 @@ include!("parts/runtime.rs");
 include!("parts/observability.rs");
 include!("parts/entities.rs");
 include!("parts/diagnostics.rs");
+#[cfg(test)]
+include!("parts/release_rehearsal.rs");
