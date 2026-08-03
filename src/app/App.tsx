@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from '../components/Sidebar'
 import {
+  bindBinaryToVerifiedArchive,
   checkRpcHealth,
   clearNodeLogs,
   discoverNodeBinary,
   exportDiagnostics,
+  getBinaryProvenance,
   getDesktopBridgeStatus,
   getNodeLogs,
+  getNodeLogTail,
   getNodeObservability,
   getNodeStatus,
   loadNodePreferences,
@@ -29,9 +32,11 @@ import { SettingsPage } from '../pages/SettingsPage'
 import type {
   AppSection,
   BinaryInfo,
+  BinaryProvenance,
   DesktopBridgeStatus,
   DiagnosticExportResult,
   LogEntry,
+  LogWindowSize,
   NodeObservability,
   NodePreferences,
   NodeRuntimeStatus,
@@ -75,6 +80,7 @@ export function App() {
   const [preferences, setPreferences] = useState<NodePreferences>(() => loadNodePreferences())
   const [binaryInfo, setBinaryInfo] = useState<BinaryInfo | null>(null)
   const [releaseVerification, setReleaseVerification] = useState<ReleaseVerification | null>(null)
+  const [binaryProvenance, setBinaryProvenance] = useState<BinaryProvenance | null>(null)
   const [diagnosticExport, setDiagnosticExport] = useState<DiagnosticExportResult | null>(null)
   const [nodeStatus, setNodeStatus] = useState<NodeRuntimeStatus>(initialNodeStatus)
   const [rpcHealth, setRpcHealth] = useState<RpcHealth>(initialRpcHealth)
@@ -92,7 +98,10 @@ export function App() {
   }, [theme])
 
   useEffect(() => {
-    void getDesktopBridgeStatus().then(setBridge)
+    void Promise.all([
+      getDesktopBridgeStatus().then(setBridge),
+      getBinaryProvenance().then(setBinaryProvenance),
+    ])
   }, [])
 
   const refreshRuntime = useCallback(async () => {
@@ -137,18 +146,30 @@ export function App() {
   }, [nodeStatus.running, refreshObservability, rpcHealth.reachable])
 
   useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+
     async function pollLogs() {
       const batch = await getNodeLogs(logCursor.current, 300)
-      if (batch.entries.length > 0) {
-        logCursor.current = batch.nextCursor
-        setLogs((current) => [...current, ...batch.entries].slice(-2_000))
-      }
+      if (cancelled || batch.entries.length === 0) return
+      logCursor.current = batch.nextCursor
+      setLogs((current) => [...current, ...batch.entries].slice(-preferences.logWindow))
     }
 
-    void pollLogs()
-    const timer = window.setInterval(() => void pollLogs(), nodeStatus.running ? 800 : 2_000)
-    return () => window.clearInterval(timer)
-  }, [nodeStatus.running])
+    async function hydrateLogWindow() {
+      const batch = await getNodeLogTail(preferences.logWindow)
+      if (cancelled) return
+      logCursor.current = batch.nextCursor
+      setLogs(batch.entries)
+      timer = window.setInterval(() => void pollLogs(), nodeStatus.running ? 800 : 2_000)
+    }
+
+    void hydrateLogWindow()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearInterval(timer)
+    }
+  }, [nodeStatus.running, preferences.logWindow])
 
   async function perform(action: () => Promise<void>) {
     setBusy(true)
@@ -167,10 +188,14 @@ export function App() {
     try {
       const info = await validateNodeBinary(path)
       setBinaryInfo(info)
+      if (binaryProvenance && !binaryProvenance.selectedBinarySha256.toLowerCase().startsWith(info.sha256.toLowerCase())) {
+        setBinaryProvenance(null)
+      }
       setOperationError('')
       return info
     } catch (error) {
       setBinaryInfo(null)
+      setBinaryProvenance(null)
       setOperationError(readableError(error))
       return null
     }
@@ -187,6 +212,7 @@ export function App() {
       setPreferences(next)
       saveNodePreferences(next)
       setBinaryInfo(info)
+      setBinaryProvenance(null)
       setOperationError('')
       return info
     } catch (error) {
@@ -224,10 +250,33 @@ export function App() {
       if (!path) return null
       const verification = await verifyApprovedReleaseArchive(path)
       setReleaseVerification(verification)
+      setBinaryProvenance(null)
       setOperationError(verification.approved ? '' : verification.message)
       return verification
     } catch (error) {
       setReleaseVerification(null)
+      setBinaryProvenance(null)
+      setOperationError(readableError(error))
+      return null
+    }
+  }
+
+  async function handleBindProvenance(executablePath: string): Promise<BinaryProvenance | null> {
+    if (!releaseVerification?.approved) {
+      setOperationError('Verify an approved release archive before linking the executable.')
+      return null
+    }
+    try {
+      setOperationError('')
+      const proof = await bindBinaryToVerifiedArchive(
+        releaseVerification.archivePath,
+        executablePath,
+      )
+      setBinaryProvenance(proof.approved ? proof : null)
+      setOperationError(proof.approved ? '' : proof.message)
+      return proof
+    } catch (error) {
+      setBinaryProvenance(null)
       setOperationError(readableError(error))
       return null
     }
@@ -238,12 +287,20 @@ export function App() {
     const endpointChanged = next.rpcEndpoint !== preferences.rpcEndpoint
     saveNodePreferences(next)
     setPreferences(next)
-    if (pathChanged) setBinaryInfo(null)
+    if (pathChanged) {
+      setBinaryInfo(null)
+      setBinaryProvenance(null)
+    }
     if (endpointChanged) {
       setObservability(null)
       setObservabilityError('')
     }
     setOperationError('')
+  }
+
+  function handleLogWindowChange(logWindow: LogWindowSize) {
+    savePreferences({ ...preferences, logWindow })
+    setDiagnosticExport(null)
   }
 
   function handleStart() {
@@ -328,6 +385,7 @@ export function App() {
         value={preferences}
         binaryInfo={binaryInfo}
         releaseVerification={releaseVerification}
+        binaryProvenance={binaryProvenance}
         busy={busy}
         error={operationError}
         onSave={savePreferences}
@@ -336,6 +394,7 @@ export function App() {
         onPickExecutable={handlePickExecutable}
         onPickDataDirectory={handlePickDataDirectory}
         onVerifyRelease={handleVerifyRelease}
+        onBindProvenance={handleBindProvenance}
       />
     )
   } else if (section === 'logs') {
@@ -346,6 +405,8 @@ export function App() {
         busy={busy}
         error={operationError}
         exportResult={diagnosticExport}
+        windowSize={preferences.logWindow}
+        onWindowSizeChange={handleLogWindowChange}
         onClear={handleClearLogs}
         onExport={handleExportDiagnostics}
       />
@@ -372,6 +433,9 @@ export function App() {
     )
   }
 
+  const showGlobalOperationError = operationError
+    && !['node', 'settings', 'logs'].includes(section)
+
   return (
     <div className="app-shell">
       <Sidebar active={section} onChange={setSection} />
@@ -384,6 +448,7 @@ export function App() {
             <button className="icon-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">{theme === 'dark' ? '☼' : '◐'}</button>
           </div>
         </header>
+        {showGlobalOperationError && <div className="notice notice-error">{operationError}</div>}
         {!configured && section !== 'settings' && <div className="notice notice-warning">Select pulsedagd and a persistent data directory before starting the node.</div>}
         {content}
       </main>

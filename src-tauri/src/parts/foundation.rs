@@ -127,6 +127,38 @@ struct ReleaseVerification {
     message: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BinaryProvenance {
+    archive_name: String,
+    archive_sha256: String,
+    release_tag: String,
+    source_commit: String,
+    target: String,
+    embedded_path: String,
+    embedded_binary_sha256: String,
+    embedded_binary_size_bytes: u64,
+    selected_binary_sha256: String,
+    selected_binary_size_bytes: u64,
+    linked_at_ms: u64,
+    approved: bool,
+    message: String,
+}
+
+#[derive(Debug, Clone)]
+struct TrustedBinaryProvenance {
+    executable_path: String,
+    binary_sha256: String,
+    binary_size_bytes: u64,
+    archive_name: String,
+    archive_sha256: String,
+    release_tag: String,
+    source_commit: String,
+    target: String,
+    embedded_path: String,
+    linked_at_ms: u64,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDesktop {
@@ -155,11 +187,25 @@ struct DiagnosticBinary {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct DiagnosticProvenance {
+    archive_name: String,
+    archive_sha256: String,
+    release_tag: String,
+    source_commit: String,
+    target: String,
+    embedded_binary_sha256: String,
+    binary_size_bytes: u64,
+    linked_at_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DiagnosticBundle {
     schema_version: u32,
     desktop: DiagnosticDesktop,
     config: DiagnosticConfig,
     binary: Option<DiagnosticBinary>,
+    provenance: Option<DiagnosticProvenance>,
     runtime: NodeRuntimeStatus,
     rpc_health: RpcHealth,
     logs: Vec<LogEntry>,
@@ -186,6 +232,7 @@ struct NodeSupervisor {
     process: Mutex<ManagedProcess>,
     logs: Arc<Mutex<VecDeque<LogEntry>>>,
     sequence: Arc<AtomicU64>,
+    provenance: Mutex<Option<TrustedBinaryProvenance>>,
 }
 
 impl Default for NodeSupervisor {
@@ -194,6 +241,7 @@ impl Default for NodeSupervisor {
             process: Mutex::new(ManagedProcess::default()),
             logs: Arc::new(Mutex::new(VecDeque::new())),
             sequence: Arc::new(AtomicU64::new(0)),
+            provenance: Mutex::new(None),
         }
     }
 }
@@ -371,4 +419,3 @@ fn inspect_release_archive(path: &Path) -> Result<LocalReleaseArchive, String> {
         sha256: sha256_path(&canonical)?,
     })
 }
-

@@ -1,5 +1,7 @@
 export type AppSection = 'overview' | 'node' | 'network' | 'dag' | 'logs' | 'settings'
 
+export type LogWindowSize = 250 | 500 | 1000 | 2000 | 5000
+
 export type DesktopBridgeStatus = {
   appVersion: string
   platform: string
@@ -14,6 +16,7 @@ export type NodePreferences = {
   dataDirectory: string
   configProfile: 'dev' | 'local' | 'private'
   launchOnStartup: boolean
+  logWindow: LogWindowSize
 }
 
 export type BinaryInfo = {
@@ -32,6 +35,22 @@ export type ReleaseVerification = {
   releaseTag: string
   sourceCommit: string
   assetDigest: string
+  approved: boolean
+  message: string
+}
+
+export type BinaryProvenance = {
+  archiveName: string
+  archiveSha256: string
+  releaseTag: string
+  sourceCommit: string
+  target: string
+  embeddedPath: string
+  embeddedBinarySha256: string
+  embeddedBinarySizeBytes: number
+  selectedBinarySha256: string
+  selectedBinarySizeBytes: number
+  linkedAtMs: number
   approved: boolean
   message: string
 }

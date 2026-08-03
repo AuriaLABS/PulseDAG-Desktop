@@ -1,3 +1,17 @@
+const DEFAULT_LOG_WINDOW: usize = 2_000;
+const MIN_LOG_WINDOW: usize = 250;
+
+fn normalize_log_window(limit: Option<usize>) -> usize {
+    limit
+        .unwrap_or(DEFAULT_LOG_WINDOW)
+        .clamp(MIN_LOG_WINDOW, MAX_LOG_ENTRIES)
+}
+
+fn log_tail(queue: &VecDeque<LogEntry>, limit: usize) -> Vec<LogEntry> {
+    let start = queue.len().saturating_sub(limit);
+    queue.iter().skip(start).cloned().collect()
+}
+
 #[tauri::command]
 fn get_node_status(state: State<'_, NodeSupervisor>) -> Result<NodeRuntimeStatus, String> {
     let mut managed = state
@@ -19,6 +33,7 @@ fn start_node(
     if !matches!(profile.as_str(), "dev" | "local" | "private") {
         return Err("Supported configuration profiles are dev, local and private.".into());
     }
+    let provenance = verify_binary_provenance_for_launch(&state, &binary, &profile)?;
 
     let data_directory = PathBuf::from(config.data_directory.trim());
     if data_directory.as_os_str().is_empty() {
@@ -89,12 +104,16 @@ fn start_node(
     managed.started_at_ms = Some(started_at_ms);
     managed.last_exit_code = None;
     managed.executable_path = Some(binary.path.clone());
+    let provenance_label = provenance
+        .as_ref()
+        .map(|proof| format!("approved:{}:{}", proof.release_tag, proof.archive_name))
+        .unwrap_or_else(|| "unverified-development".into());
     push_log(
         &state.logs,
         &state.sequence,
         "desktop",
         format!(
-            "started pulsedagd pid={pid} profile={profile} rpc={} data={}",
+            "started pulsedagd pid={pid} profile={profile} provenance={provenance_label} rpc={} data={}",
             rpc.socket_addr,
             data_directory.display()
         ),
@@ -262,6 +281,21 @@ fn get_node_logs(
 }
 
 #[tauri::command]
+fn get_node_log_tail(limit: Option<usize>, state: State<'_, NodeSupervisor>) -> LogBatch {
+    let limit = normalize_log_window(limit);
+    let entries = state
+        .logs
+        .lock()
+        .map(|queue| log_tail(&queue, limit))
+        .unwrap_or_default();
+    let next_cursor = entries.last().map(|entry| entry.sequence).unwrap_or_default();
+    LogBatch {
+        entries,
+        next_cursor,
+    }
+}
+
+#[tauri::command]
 fn clear_node_logs(state: State<'_, NodeSupervisor>) -> Result<(), String> {
     state
         .logs
@@ -270,4 +304,3 @@ fn clear_node_logs(state: State<'_, NodeSupervisor>) -> Result<(), String> {
         .clear();
     Ok(())
 }
-

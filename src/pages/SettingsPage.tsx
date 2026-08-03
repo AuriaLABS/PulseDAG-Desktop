@@ -1,10 +1,11 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
-import type { BinaryInfo, NodePreferences, ReleaseVerification } from '../types'
+import type { BinaryInfo, BinaryProvenance, NodePreferences, ReleaseVerification } from '../types'
 
 type SettingsPageProps = {
   value: NodePreferences
   binaryInfo: BinaryInfo | null
   releaseVerification: ReleaseVerification | null
+  binaryProvenance: BinaryProvenance | null
   busy: boolean
   error: string
   onSave: (preferences: NodePreferences) => void
@@ -13,12 +14,14 @@ type SettingsPageProps = {
   onPickExecutable: () => Promise<string | null>
   onPickDataDirectory: () => Promise<string | null>
   onVerifyRelease: () => Promise<ReleaseVerification | null>
+  onBindProvenance: (path: string) => Promise<BinaryProvenance | null>
 }
 
 export function SettingsPage({
   value,
   binaryInfo,
   releaseVerification,
+  binaryProvenance,
   busy,
   error,
   onSave,
@@ -27,6 +30,7 @@ export function SettingsPage({
   onPickExecutable,
   onPickDataDirectory,
   onVerifyRelease,
+  onBindProvenance,
 }: SettingsPageProps) {
   const [draft, setDraft] = useState(value)
   const [saved, setSaved] = useState(false)
@@ -95,11 +99,27 @@ export function SettingsPage({
     }
   }
 
+  async function bindProvenance() {
+    setChecking(true)
+    try {
+      await onBindProvenance(draft.executablePath)
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const privateNeedsProvenance = draft.configProfile === 'private' && !binaryProvenance?.approved
+
   return (
     <form className="settings-layout" onSubmit={submit}>
       <section className="panel settings-panel">
         <div className="panel-header"><div><span className="eyebrow">Local configuration</span><h3>Node runtime</h3></div></div>
         {error && <div className="notice notice-error inline-notice">{error}</div>}
+        {privateNeedsProvenance && (
+          <div className="notice notice-warning inline-notice">
+            The private profile requires this executable to be linked to an approved release archive during the current desktop session.
+          </div>
+        )}
         <label>
           <span>pulsedagd path</span>
           <div className="input-action-row">
@@ -137,7 +157,7 @@ export function SettingsPage({
           <select value={draft.configProfile} onChange={(event: ChangeEvent<HTMLSelectElement>) => update('configProfile', event.target.value as NodePreferences['configProfile'])}>
             <option value="dev">Development · isolated</option>
             <option value="local">Local network · P2P enabled</option>
-            <option value="private">Private testnet · operator profile</option>
+            <option value="private">Private testnet · verified binary required</option>
           </select>
           <small>The desktop always overrides RPC to the selected loopback origin and disables administrative endpoints.</small>
         </label>
@@ -154,8 +174,8 @@ export function SettingsPage({
       <aside className="settings-side-stack">
         <section className="panel settings-aside">
           <span className="eyebrow">Approved release evidence</span>
-          <h3>Verify the downloaded archive</h3>
-          <p>Select the original v2.3.0 ZIP or TAR.GZ. Rust hashes it locally and compares it with the digest published by GitHub for the approved PulseDAG release and source commit.</p>
+          <h3>Verify and link the node</h3>
+          <p>First verify the original v2.3.0 ZIP or TAR.GZ against GitHub. Then Rust reads pulsedagd directly from that archive and compares its bytes with the selected executable without extracting or running anything.</p>
           <button className="secondary-button full-width-button" type="button" onClick={() => void verifyRelease()} disabled={busy || checking}>Verify release archive…</button>
           {releaseVerification && (
             <div className={`release-result ${releaseVerification.approved ? 'approved' : 'rejected'}`}>
@@ -165,7 +185,32 @@ export function SettingsPage({
               <small>{releaseVerification.message}</small>
             </div>
           )}
-          <div className="notice notice-warning release-boundary">This confirms the downloaded archive, not an extracted executable copied from an unknown source.</div>
+          <button
+            className="primary-button full-width-button"
+            type="button"
+            onClick={() => void bindProvenance()}
+            disabled={busy || checking || !releaseVerification?.approved || !draft.executablePath}
+          >
+            Link executable to approved archive
+          </button>
+          {binaryProvenance && (
+            <div className="provenance-result approved">
+              <div className="provenance-result-header">
+                <strong>Byte-for-byte match</strong>
+                <span>{binaryProvenance.target}</span>
+              </div>
+              <small>{binaryProvenance.archiveName}</small>
+              <code>{binaryProvenance.embeddedBinarySha256}</code>
+              <div className="detail-list compact-details">
+                <div><span>Release</span><strong>{binaryProvenance.releaseTag}</strong></div>
+                <div><span>Source</span><strong>{binaryProvenance.sourceCommit.slice(0, 12)}</strong></div>
+                <div><span>Embedded file</span><strong>{binaryProvenance.embeddedPath}</strong></div>
+                <div><span>Size</span><strong>{(binaryProvenance.embeddedBinarySizeBytes / 1_048_576).toFixed(2)} MiB</strong></div>
+              </div>
+              <p>{binaryProvenance.message}</p>
+            </div>
+          )}
+          <div className="notice notice-warning release-boundary">The proof is held in native memory for this desktop session. The binary is hashed again before every launch; changing it invalidates the proof.</div>
         </section>
 
         <section className="panel settings-aside">
@@ -173,6 +218,7 @@ export function SettingsPage({
           <h3>Explicit launch environment</h3>
           <p>Before starting pulsedagd, the Rust backend removes inherited PULSEDAG_* variables and supplies only the selected profile, loopback RPC binding, state paths and administrative-disable flags.</p>
           <div className="detail-list compact-details">
+            <div><span>Private profile</span><strong>Proof required</strong></div>
             <div><span>Admin RPC</span><strong>Forced off</strong></div>
             <div><span>RPC exposure</span><strong>Loopback only</strong></div>
             <div><span>Secrets</span><strong>Not accepted</strong></div>

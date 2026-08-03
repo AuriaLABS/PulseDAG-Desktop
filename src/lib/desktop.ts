@@ -2,10 +2,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import type {
   BinaryInfo,
+  BinaryProvenance,
   BlockDetail,
   DesktopBridgeStatus,
   DiagnosticExportResult,
   LogBatch,
+  LogWindowSize,
   NodeObservability,
   NodePreferences,
   NodeRuntimeStatus,
@@ -20,6 +22,7 @@ export const defaultPreferences: NodePreferences = {
   dataDirectory: '',
   configProfile: 'dev',
   launchOnStartup: false,
+  logWindow: 2000,
 }
 
 const stoppedStatus: NodeRuntimeStatus = {
@@ -31,8 +34,16 @@ const stoppedStatus: NodeRuntimeStatus = {
   executablePath: null,
 }
 
+const supportedLogWindows: LogWindowSize[] = [250, 500, 1000, 2000, 5000]
+
 function selectedPath(value: string | string[] | null): string | null {
   return typeof value === 'string' ? value : null
+}
+
+function normalizeLogWindow(value: unknown): LogWindowSize {
+  return typeof value === 'number' && supportedLogWindows.includes(value as LogWindowSize)
+    ? value as LogWindowSize
+    : defaultPreferences.logWindow
 }
 
 export async function getDesktopBridgeStatus(): Promise<DesktopBridgeStatus> {
@@ -94,6 +105,21 @@ export async function verifyApprovedReleaseArchive(path: string): Promise<Releas
   return invoke<ReleaseVerification>('verify_approved_release_archive', { path })
 }
 
+export async function bindBinaryToVerifiedArchive(
+  archivePath: string,
+  executablePath: string,
+): Promise<BinaryProvenance> {
+  return invoke<BinaryProvenance>('bind_binary_to_verified_archive', { archivePath, executablePath })
+}
+
+export async function getBinaryProvenance(): Promise<BinaryProvenance | null> {
+  try {
+    return await invoke<BinaryProvenance | null>('get_binary_provenance')
+  } catch {
+    return null
+  }
+}
+
 export async function getNodeStatus(): Promise<NodeRuntimeStatus> {
   try {
     return await invoke<NodeRuntimeStatus>('get_node_status')
@@ -150,6 +176,14 @@ export async function getNodeLogs(after = 0, limit = 250): Promise<LogBatch> {
   }
 }
 
+export async function getNodeLogTail(limit: LogWindowSize): Promise<LogBatch> {
+  try {
+    return await invoke<LogBatch>('get_node_log_tail', { limit })
+  } catch {
+    return { entries: [], nextCursor: 0 }
+  }
+}
+
 export async function clearNodeLogs(): Promise<void> {
   await invoke('clear_node_logs')
 }
@@ -168,6 +202,7 @@ export async function exportDiagnostics(
       configProfile: preferences.configProfile,
     },
     rpcHealth,
+    logLimit: preferences.logWindow,
   })
 }
 
@@ -179,7 +214,12 @@ export function loadNodePreferences(): NodePreferences {
     const parsed = JSON.parse(raw) as Partial<NodePreferences> & { network?: string }
     const migratedProfile = parsed.configProfile
       ?? (parsed.network === 'private-testnet' ? 'private' : parsed.network === 'devnet' ? 'dev' : 'local')
-    return { ...defaultPreferences, ...parsed, configProfile: migratedProfile } as NodePreferences
+    return {
+      ...defaultPreferences,
+      ...parsed,
+      configProfile: migratedProfile,
+      logWindow: normalizeLogWindow(parsed.logWindow),
+    } as NodePreferences
   } catch {
     return defaultPreferences
   }
