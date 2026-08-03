@@ -1,0 +1,60 @@
+.log-window-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(147, 170, 214, .04);
+}
+
+.log-window-control span,
+.log-window-count {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.log-window-control select {
+  min-width: 112px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: 500 10px/1.2 'DM Mono', monospace;
+  cursor: pointer;
+}
+
+.log-window-control select:disabled {
+  cursor: not-allowed;
+  opacity: .65;
+}
+
+.log-window-control option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.log-window-count {
+  padding: 0 2px;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+@media (max-width: 760px) {
+  .logs-actions {
+    justify-content: flex-start;
+  }
+
+  .log-window-control {
+    order: 2;
+  }
+
+  .log-window-count {
+    order: 3;
+  }
+}
