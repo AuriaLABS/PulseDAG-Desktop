@@ -26,7 +26,10 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all"
+    "active": true,
+    "targets": "all",
+    "copyright": "Copyright © 2026 AuriaLABS",
+    "shortDescription": "Secure local operator client for PulseDAG",
+    "longDescription": "PulseDAG Desktop supervises and observes a local PulseDAG node through a loopback-only, read-only operator boundary."
   }
 }
