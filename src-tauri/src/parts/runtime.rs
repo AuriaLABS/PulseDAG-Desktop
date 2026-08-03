@@ -1,3 +1,17 @@
+const DEFAULT_LOG_WINDOW: usize = 2_000;
+const MIN_LOG_WINDOW: usize = 250;
+
+fn normalize_log_window(limit: Option<usize>) -> usize {
+    limit
+        .unwrap_or(DEFAULT_LOG_WINDOW)
+        .clamp(MIN_LOG_WINDOW, MAX_LOG_ENTRIES)
+}
+
+fn log_tail(queue: &VecDeque<LogEntry>, limit: usize) -> Vec<LogEntry> {
+    let start = queue.len().saturating_sub(limit);
+    queue.iter().skip(start).cloned().collect()
+}
+
 #[tauri::command]
 fn get_node_status(state: State<'_, NodeSupervisor>) -> Result<NodeRuntimeStatus, String> {
     let mut managed = state
@@ -260,6 +274,21 @@ fn get_node_logs(
         })
         .unwrap_or_default();
     let next_cursor = entries.last().map(|entry| entry.sequence).unwrap_or(cursor);
+    LogBatch {
+        entries,
+        next_cursor,
+    }
+}
+
+#[tauri::command]
+fn get_node_log_tail(limit: Option<usize>, state: State<'_, NodeSupervisor>) -> LogBatch {
+    let limit = normalize_log_window(limit);
+    let entries = state
+        .logs
+        .lock()
+        .map(|queue| log_tail(&queue, limit))
+        .unwrap_or_default();
+    let next_cursor = entries.last().map(|entry| entry.sequence).unwrap_or_default();
     LogBatch {
         entries,
         next_cursor,
