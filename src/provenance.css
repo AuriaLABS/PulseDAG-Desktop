@@ -1,0 +1,11 @@
+.provenance-result { display: grid; gap: 10px; margin-top: 14px; padding: 15px; border: 1px solid var(--border); border-radius: 12px; background: rgba(147, 170, 214, .04); }
+.provenance-result.approved { border-color: rgba(84, 232, 173, .32); background: linear-gradient(145deg, rgba(84, 232, 173, .075), rgba(79, 223, 255, .025)); box-shadow: inset 3px 0 0 var(--green); }
+.provenance-result-header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.provenance-result-header strong { color: var(--green); }
+.provenance-result-header span { padding: 5px 8px; border: 1px solid rgba(84, 232, 173, .25); border-radius: 999px; color: var(--green); font: 500 8px/1 'DM Mono', monospace; text-transform: uppercase; }
+.provenance-result > small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.provenance-result > code { padding: 10px; overflow-wrap: anywhere; border: 1px solid rgba(79, 223, 255, .18); border-radius: 9px; background: rgba(3, 5, 10, .22); color: var(--cyan); font: 400 9px/1.55 'DM Mono', monospace; }
+.provenance-result .compact-details { margin-top: 2px; }
+.provenance-result .detail-list strong { max-width: 64%; overflow-wrap: anywhere; text-align: right; font-size: 9px; }
+.provenance-result p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+@media (max-width: 760px) { .provenance-result-header { align-items: flex-start; flex-direction: column; } .provenance-result .detail-list strong { max-width: 58%; } }
