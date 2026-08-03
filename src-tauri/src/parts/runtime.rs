@@ -12,6 +12,52 @@ fn log_tail(queue: &VecDeque<LogEntry>, limit: usize) -> Vec<LogEntry> {
     queue.iter().skip(start).cloned().collect()
 }
 
+fn normalize_windows_verbatim_path(path: &str) -> Result<String, String> {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        if rest.is_empty() {
+            return Err("The Windows UNC data directory is incomplete.".into());
+        }
+        return Ok(format!(r"\\{rest}"));
+    }
+
+    if let Some(rest) = path.strip_prefix(r"\\?\") {
+        let bytes = rest.as_bytes();
+        let is_drive_path = bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'\\' | b'/');
+        if is_drive_path {
+            return Ok(rest.to_string());
+        }
+        return Err(
+            "This Windows data directory uses an unsupported verbatim path. Choose a normal drive or UNC directory."
+                .into(),
+        );
+    }
+
+    Ok(path.to_string())
+}
+
+#[cfg(windows)]
+fn normalize_data_directory_for_node(path: PathBuf) -> Result<PathBuf, String> {
+    let path_text = path.to_str().ok_or_else(|| {
+        "The Windows data directory cannot be represented safely for pulsedagd.".to_string()
+    })?;
+    normalize_windows_verbatim_path(path_text).map(PathBuf::from)
+}
+
+#[cfg(not(windows))]
+fn normalize_data_directory_for_node(path: PathBuf) -> Result<PathBuf, String> {
+    Ok(path)
+}
+
+fn prepare_data_directory(path: &Path) -> Result<PathBuf, String> {
+    fs::create_dir_all(path).map_err(|error| format!("Cannot create data directory: {error}"))?;
+    let canonical = fs::canonicalize(path)
+        .map_err(|error| format!("Cannot resolve data directory: {error}"))?;
+    normalize_data_directory_for_node(canonical)
+}
+
 #[tauri::command]
 fn get_node_status(state: State<'_, NodeSupervisor>) -> Result<NodeRuntimeStatus, String> {
     let mut managed = state
@@ -35,14 +81,11 @@ fn start_node(
     }
     let provenance = verify_binary_provenance_for_launch(&state, &binary, &profile)?;
 
-    let data_directory = PathBuf::from(config.data_directory.trim());
-    if data_directory.as_os_str().is_empty() {
+    let configured_data_directory = PathBuf::from(config.data_directory.trim());
+    if configured_data_directory.as_os_str().is_empty() {
         return Err("Choose a persistent data directory before starting the node.".into());
     }
-    fs::create_dir_all(&data_directory)
-        .map_err(|error| format!("Cannot create data directory: {error}"))?;
-    let data_directory = fs::canonicalize(&data_directory)
-        .map_err(|error| format!("Cannot resolve data directory: {error}"))?;
+    let data_directory = prepare_data_directory(&configured_data_directory)?;
     let rocksdb_path = data_directory.join("rocksdb");
     fs::create_dir_all(&rocksdb_path)
         .map_err(|error| format!("Cannot create RocksDB directory: {error}"))?;
@@ -303,4 +346,40 @@ fn clear_node_logs(state: State<'_, NodeSupervisor>) -> Result<(), String> {
         .map_err(|_| "Log state is unavailable.".to_string())?
         .clear();
     Ok(())
+}
+
+#[cfg(test)]
+mod runtime_path_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_windows_drive_path_drops_verbatim_prefix() {
+        assert_eq!(
+            normalize_windows_verbatim_path(r"\\?\C:\PulseDAG\data").unwrap(),
+            r"C:\PulseDAG\data"
+        );
+    }
+
+    #[test]
+    fn runtime_windows_unc_path_drops_verbatim_prefix() {
+        assert_eq!(
+            normalize_windows_verbatim_path(r"\\?\UNC\server\share\PulseDAG").unwrap(),
+            r"\\server\share\PulseDAG"
+        );
+    }
+
+    #[test]
+    fn runtime_windows_normal_path_is_unchanged() {
+        assert_eq!(
+            normalize_windows_verbatim_path(r"C:\PulseDAG\data").unwrap(),
+            r"C:\PulseDAG\data"
+        );
+    }
+
+    #[test]
+    fn runtime_windows_unsupported_verbatim_path_is_rejected() {
+        let error = normalize_windows_verbatim_path(r"\\?\Volume{1234}\PulseDAG")
+            .expect_err("volume GUID paths must not be passed to pulsedagd");
+        assert!(error.contains("unsupported verbatim path"));
+    }
 }
