@@ -198,7 +198,7 @@ fn inspect_zip_binary(
             binary_evidence = Some(EmbeddedBinaryEvidence {
                 target: layout.target.clone(),
                 embedded_path: path.display().to_string(),
-                archive_sha256,
+                archive_sha256: archive_sha256.clone(),
                 binary_sha256,
                 binary_size_bytes,
             });
@@ -265,7 +265,7 @@ fn inspect_tar_binary(
             binary_evidence = Some(EmbeddedBinaryEvidence {
                 target: layout.target.clone(),
                 embedded_path: path.display().to_string(),
-                archive_sha256,
+                archive_sha256: archive_sha256.clone(),
                 binary_sha256,
                 binary_size_bytes,
             });
