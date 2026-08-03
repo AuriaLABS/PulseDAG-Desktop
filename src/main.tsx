@@ -5,6 +5,7 @@ import './styles.css'
 import './runtime.css'
 import './entity.css'
 import './provenance.css'
+import './log-window.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
