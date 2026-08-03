@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import type {
   BinaryInfo,
+  BinaryProvenance,
   BlockDetail,
   DesktopBridgeStatus,
   DiagnosticExportResult,
@@ -92,6 +93,21 @@ export async function validateNodeBinary(path: string): Promise<BinaryInfo> {
 
 export async function verifyApprovedReleaseArchive(path: string): Promise<ReleaseVerification> {
   return invoke<ReleaseVerification>('verify_approved_release_archive', { path })
+}
+
+export async function bindBinaryToVerifiedArchive(
+  archivePath: string,
+  executablePath: string,
+): Promise<BinaryProvenance> {
+  return invoke<BinaryProvenance>('bind_binary_to_verified_archive', { archivePath, executablePath })
+}
+
+export async function getBinaryProvenance(): Promise<BinaryProvenance | null> {
+  try {
+    return await invoke<BinaryProvenance | null>('get_binary_provenance')
+  } catch {
+    return null
+  }
 }
 
 export async function getNodeStatus(): Promise<NodeRuntimeStatus> {
