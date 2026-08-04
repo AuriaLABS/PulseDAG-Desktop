@@ -1,32 +1,26 @@
 # PulseDAG Desktop
 
-PulseDAG Desktop is the native operator client for running, observing and locally mining against a PulseDAG node. It is intentionally separate from the public read-only explorer.
+PulseDAG Desktop is the native operator client for running, observing and locally mining against a PulseDAG node. It remains separate from the public read-only explorer.
 
 ## Current capabilities
 
-- Tauri 2 desktop shell with Rust supervision backends for `pulsedagd` and the external `pulsedag-miner`.
-- React 19, TypeScript and Vite frontend.
-- Dark and light PulseDAG themes.
-- Native file and directory dialogs for selecting the node, miner, persistent state and diagnostic output.
-- Manual path selection and automatic discovery of `pulsedagd` and `pulsedag-miner` beside the app, in `./bin`, through their dedicated environment variables, or on `PATH`.
-- Native binary validation for exact file names, executable permissions, size and SHA-256 digest.
-- Verification of original v2.3.0 node release archives against the digest and exact source commit published by the approved PulseDAG GitHub release.
-- Byte-for-byte linkage between the selected node executable and `pulsedagd` stored inside the approved release archive.
-- Supervised node start, stop and restart, with approved provenance required for the private profile.
-- Supervised standalone CPU mining for development and local profiles through a fixed official CLI surface.
-- Miner telemetry for hashrate, attempts, templates, accepted blocks, rejected submissions, stale work and recent process output.
-- Captured stdout, stderr and desktop lifecycle messages with bounded, separate node and miner log buffers.
-- Redacted JSON diagnostic export covering node runtime state, binary evidence, release provenance, loopback health and captured node logs.
-- Loopback-only RPC health checks against `GET /health`.
-- Native read-only observability through exact v2.3.0 API routes for node status, synchronization, mempool, PoW health and recent blocks.
-- Network workspace with chain identity, peer count, P2P mode, convergence gaps, readiness evidence and ledger pressure.
-- Live DAG workspace with the recent frontier, selected-tip evidence, real block relations, confirmed block transactions and bounded transaction lookup.
-- Persistent non-secret preferences for node and miner paths, public reward address, CPU limits, data directory, RPC origin and configuration profile.
-- CI for TypeScript, frontend production build, Rust validation, provenance guards, miner command guards and read-only route guards.
+- Tauri 2 desktop shell with independent Rust supervisors for `pulsedagd` and the official external `pulsedag-miner`.
+- React 19, TypeScript and Vite frontend with dark and light themes.
+- Native selection, discovery and SHA-256 validation of the node and miner executables.
+- Persistent node state with a loopback-only RPC boundary.
+- Approved v2.3.0 release verification for the node and miner archives.
+- Byte-for-byte linkage between each selected executable and the matching member of its approved archive.
+- Supervised node start, stop and restart.
+- Supervised standalone CPU mining with bounded configuration and typed telemetry.
+- Private-profile node and miner launch only when their separate provenance proofs are current.
+- Development and local profiles for locally built, explicitly unverified binaries.
+- Read-only network, synchronization, mempool, PoW and DAG observability.
+- Bounded node and miner logs, plus redacted node diagnostic export.
+- Unsigned Windows MSI/NSIS and Linux Debian/AppImage packaging workflows.
 
 ## Read-only observability boundary
 
-PulseDAG Desktop continuously reads only the following exact local routes:
+PulseDAG Desktop continuously reads only these exact local routes:
 
 - `GET /api/v1/status`
 - `GET /api/v1/blocks/recent?limit=20`
@@ -34,26 +28,13 @@ PulseDAG Desktop continuously reads only the following exact local routes:
 - `GET /api/v1/mempool`
 - `GET /api/v1/pow/health`
 
-The native adapter:
-
-1. Reuses the loopback-only RPC origin validation.
-2. Rejects every path outside the explicit observability allowlist.
-3. Disables HTTP redirects.
-4. Applies connection and request timeouts.
-5. Rejects responses larger than 1 MiB.
-6. Requires status and recent blocks, while allowing sync, mempool and PoW panels to degrade independently.
-
-The approved status contract exposes peer count and P2P mode, not individual peer identities or addresses. The desktop therefore does not infer a peer table. The recent-block route exposes parent count but not parent hashes, so the frontier itself remains an exact timeline rather than a synthetic graph.
-
-## Bounded entity drill-down
-
-Block and transaction inspection uses only identifiers returned by the node and accepts exactly 64 hexadecimal characters. The backend constructs only these routes:
+Block and transaction inspection constructs only these bounded routes from fixed-length hexadecimal identifiers:
 
 - `GET /api/v1/blocks/<64-hex-hash>/overview`
 - `GET /api/v1/blocks/<64-hex-hash>/transactions?limit=100&offset=0`
 - `GET /api/v1/txs/<64-hex-txid>/lookup`
 
-The desktop does not accept free-form paths, query strings or arbitrary entity identifiers. Block transactions are capped at the first 100 records and the interface reports when the node says more records exist. Parent, child, block and transaction navigation remains inside the same guarded commands.
+The native adapter rejects non-loopback origins, credentials, query injection, fragments, redirects, oversized responses and routes outside the allowlist.
 
 ## Standalone mining boundary
 
@@ -62,104 +43,93 @@ Mining remains external to `pulsedagd`. Desktop starts the official `pulsedag-mi
 - loopback node origin;
 - public reward address;
 - canonical `cpu` backend;
-- bounded CPU thread count;
-- bounded attempts per template;
-- loop sleep and refresh-before-expiry thresholds;
+- bounded CPU thread count and attempts per template;
+- bounded loop sleep and refresh-before-expiry values;
 - optional worker ID;
 - heartbeat enabled or disabled.
 
-The backend accepts only executables named `pulsedag-miner` or `pulsedag-miner.exe`, verifies executable permissions and SHA-256 before launch, removes inherited `PULSEDAG_*` variables, requires the local node RPC to be reachable and never accepts free-form command arguments.
+The backend accepts only executables named `pulsedag-miner` or `pulsedag-miner.exe`, verifies executable permissions and SHA-256 before launch, removes inherited `PULSEDAG_*` variables and requires the local node RPC to be reachable. Desktop never accepts free-form command arguments.
 
-Development and local profiles can mine in this milestone. Private-profile mining is deliberately blocked until the selected miner executable can be linked byte-for-byte to an approved `pulsedag-miner-v2.3.0-<target>` release archive. The CPU backend is the consensus reference. GPU mining is not enabled by Desktop.
+Development and local profiles may use locally built miner binaries and record an unverified-development boundary. Private-profile mining uses a separate native command that refuses to start unless the selected miner is linked to an approved v2.3.0 miner archive in the current desktop session.
 
-Only a public reward address is stored in local preferences and passed to the miner. Desktop does not request, store or transmit a seed phrase, private key, wallet password or signing material. The standalone miner requests templates and submits solved blocks itself; Desktop does not construct blocks or submit mining RPC payloads.
+Only a public reward address is stored in local preferences. Desktop does not request, store or transmit a seed phrase, private key, wallet password or signing material. The external miner requests templates and submits solved blocks itself; Desktop does not construct blocks or submit mining payloads.
 
-## Release verification boundary
+GPU mining, pool coordination, shares, payouts, accounting and remote mining endpoints remain outside the current scope.
 
-The node release verifier accepts an original `pulsedagd-v2.3.0-<target>.tar.gz` or `.zip` asset. The Rust backend:
+## Approved release verification
 
-1. Hashes the selected archive locally with SHA-256.
-2. Queries the official `AuriaLABS/PulseDAG` GitHub release for tag `v2.3.0`.
-3. Requires the published release to target the approved source commit `7e43225f01ac05d15e5f1e3f1550d7850bf18cbc`.
-4. Locates the exact release asset by file name.
-5. Compares the local archive digest with GitHub's published asset digest.
+Node and miner verification are independent. The verifier accepts only an original asset whose name matches one of these patterns for the current native target:
 
-## Node binary provenance boundary
+- `pulsedagd-v2.3.0-<target>.tar.gz` or `.zip`;
+- `pulsedag-miner-v2.3.0-<target>.tar.gz` or `.zip`.
 
-After the node archive is approved, the desktop can link the selected executable to the archive without extracting or running any file. The native backend:
+For each selected archive, the Rust backend:
 
-1. Opens the already-approved archive as ZIP or TAR.GZ.
-2. Requires the archive target to match the current operating system and architecture.
-3. Accepts only the exact release root containing `pulsedagd` or `pulsedagd.exe`, `README.md` and `INSTALL_BINARIES_V2_3_0.md`.
-4. Rejects absolute paths, `.` or `..` components, links, unsupported entry types, duplicate files, unexpected files and oversized entries.
-5. Streams the embedded binary through SHA-256 with a 256 MiB limit.
-6. Re-hashes the selected executable and requires identical digest and size.
-7. Stores only the resulting hashes, release identity and canonical executable path in native memory for the current desktop session.
+1. Resolves a regular local file within the 512 MiB limit.
+2. Computes its SHA-256 digest.
+3. Queries the official `AuriaLABS/PulseDAG` GitHub release tagged `v2.3.0`.
+4. Requires the release to identify approved source commit `7e43225f01ac05d15e5f1e3f1550d7850bf18cbc`.
+5. Locates the exact asset and compares the local digest with the published digest or checksum asset.
 
-The node executable is hashed again before launch. Replacing or modifying it invalidates the proof. The `private` node profile refuses to start without a current approved proof. The `dev` and `local` profiles remain available for locally built binaries and record `unverified-development` in the desktop lifecycle log.
+A node archive cannot authorize a miner and a miner archive cannot authorize a node. Their native trust registries, commands and CI evidence are separate.
+
+## Binary provenance boundary
+
+After an archive is approved, Desktop reads it without extracting or executing anything. Node and miner inspection apply the same strict structure:
+
+1. The archive target must match the current OS and architecture.
+2. Windows uses ZIP; Linux and macOS use TAR.GZ.
+3. The exact versioned root may contain only the matching executable, `README.md` and `INSTALL_BINARIES_V2_3_0.md`.
+4. Absolute paths, `.` or `..`, links, unsupported entry types, duplicate entries and unexpected files are rejected.
+5. The embedded executable is streamed through SHA-256 with a 256 MiB limit.
+6. The selected executable is re-hashed and must match the embedded digest and size exactly.
+7. Only the resulting hashes, release identity and canonical executable path are retained in native memory for the current session.
+
+Both executables are hashed again before private launch. Replacing or modifying either file invalidates only its corresponding proof. Restarting Desktop requires the archive-to-executable linkage to be established again.
 
 ## Node launch boundary
 
-The desktop backend accepts the `dev`, `local` and `private` PulseDAG configuration profiles. Before launching the node it:
+Before launching `pulsedagd`, Desktop:
 
-1. Validates the selected `pulsedagd` file and rechecks any active provenance proof.
-2. Requires approved release provenance for the private profile.
-3. Requires a persistent data directory.
-4. Removes all inherited `PULSEDAG_*` variables.
-5. Restores the non-PulseDAG parent environment.
-6. Supplies an explicit profile, RPC bind, RocksDB path and P2P identity path.
-7. Forces `PULSEDAG_ADMIN_ENABLED=false`.
-8. Restricts RPC to `localhost`, `127.0.0.1` or `::1` over HTTP.
+1. validates the executable and rechecks active provenance;
+2. requires node provenance for the `private` profile;
+3. creates and normalizes the persistent data directory;
+4. removes inherited `PULSEDAG_*` variables;
+5. supplies the selected profile, loopback RPC bind, RocksDB path and P2P identity path;
+6. forces administrative RPC off and clears the CORS allowlist.
 
-## Diagnostic export boundary
+Windows verbatim data paths are converted to normal drive or UNC paths before being passed to RocksDB.
 
-The diagnostic bundle is written only to a user-selected `.json` file. Before writing, the backend replaces:
+## Logs and diagnostics
 
-- the selected node executable path;
-- the persistent data directory;
-- the current home or user-profile directory;
-- matching path fragments captured in node stdout, stderr or lifecycle logs.
+Node and miner processes have separate bounded in-memory log buffers. Miner output is parsed only when it uses the official `miner_telemetry` format, producing typed counters for hashrate, attempts, templates, accepted and rejected submissions, stale work and recent heights.
 
-Schema version 2 includes node release tag, source commit, target, archive digest and embedded binary digest when an approved proof exists. It does not include the local archive path, node executable path, miner configuration, reward address or miner logs. The bundle contains no seed, private key, signing material, wallet password or operator token. Users should still review the JSON before sharing it because application logs can contain arbitrary text emitted by the node or operating system.
+The JSON diagnostic export covers the node runtime, binary evidence, node release provenance, loopback health and redacted node logs. It excludes the reward address, miner configuration, miner logs, local archive paths, wallet material and operator tokens.
 
 ## Security boundary
 
-- Administrative RPC, wallet management and general transaction-signing capabilities are not exposed.
-- Mining is limited to supervision of the official external miner through fixed local arguments; Desktop does not expose a generic command runner.
-- Credentials, seeds, private keys, wallet passwords and operator tokens are not accepted by the frontend or stored in local preferences.
-- RPC URLs containing credentials, query strings, fragments or non-loopback hosts are rejected.
-- Entity identifiers are fixed-length hexadecimal values and cannot inject paths, queries or fragments.
-- Node release archives are inspected in memory and are never automatically extracted or executed.
-- The frontend receives explicit status objects and invokes narrowly scoped Tauri commands.
-- Graceful stop uses `SIGTERM` on Unix, followed by a forced stop after five seconds when required.
-- Launch-on-startup remains disabled until crash recovery and ownership policies are defined.
-- Pool coordination, shares, payouts, accounting and remote mining endpoints remain outside scope.
+- Administrative RPC, wallet management and transaction signing are not exposed.
+- Mining is limited to supervision of the official external miner through fixed local arguments.
+- Credentials, seeds, private keys, wallet passwords and operator tokens are not accepted.
+- RPC must use HTTP on `localhost`, `127.0.0.1` or `::1` and contain no credentials, query or fragment.
+- Release archives are inspected in memory and are never automatically extracted or executed.
+- The frontend receives typed results and invokes narrowly scoped Tauri commands.
+- Graceful stop uses `SIGTERM` on Unix and a bounded forced-stop fallback.
+- Launch-on-startup remains disabled until crash recovery and process ownership policies are defined.
 
 ## Development
 
 Prerequisites:
 
-- Node.js 22 or newer
-- Rust stable
-- Tauri 2 platform dependencies
-
-Install dependencies and start the native application:
+- Node.js 22 or newer;
+- Rust stable;
+- Tauri 2 platform dependencies.
 
 ```bash
 npm install
 npm run tauri dev
-```
-
-Run frontend checks:
-
-```bash
 npm run typecheck
 npm run build
-```
-
-Run the Rust checks and security tests:
-
-```bash
 cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml observability_paths_are_exactly_allowlisted
 cargo test --manifest-path src-tauri/Cargo.toml entity_
@@ -169,8 +139,10 @@ cargo test --manifest-path src-tauri/Cargo.toml provenance_
 cargo test --manifest-path src-tauri/Cargo.toml diagnostic_
 ```
 
-## Next milestone
+## Remaining promotion checks
 
-1. Link `pulsedag-miner` byte-for-byte to its approved release archive and enable private-profile mining.
-2. Exercise a real Windows node-plus-miner flow and record accepted/rejected submission evidence.
-3. Define crash recovery and process ownership before enabling launch on startup.
+1. Install the Windows package on a native desktop.
+2. Verify and link both official v2.3.0 archives and executables.
+3. Start the node and miner through the real UI.
+4. Observe template, hashrate and accepted or explicitly rejected submission evidence.
+5. Define crash recovery, process ownership, signing and public-release promotion.
