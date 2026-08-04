@@ -1,10 +1,18 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import {
+  bindMinerBinaryToVerifiedArchive,
+  getMinerBinaryProvenance,
+  selectMinerReleaseArchive,
+  verifyApprovedMinerReleaseArchive,
+} from '../lib/desktop'
 import type {
   BinaryInfo,
+  BinaryProvenance,
   LogEntry,
   MinerRuntimeStatus,
   NodePreferences,
   NodeRuntimeStatus,
+  ReleaseVerification,
   RpcHealth,
 } from '../types'
 
@@ -38,6 +46,10 @@ function formatHashrate(value: number): string {
   return `${value.toFixed(2)} H/s`
 }
 
+function readableError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export function MiningPage({
   preferences,
   minerBinaryInfo,
@@ -58,11 +70,21 @@ export function MiningPage({
   const [draft, setDraft] = useState(preferences)
   const [checking, setChecking] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [releaseVerification, setReleaseVerification] = useState<ReleaseVerification | null>(null)
+  const [minerProvenance, setMinerProvenance] = useState<BinaryProvenance | null>(null)
+  const [provenanceError, setProvenanceError] = useState('')
 
   useEffect(() => setDraft(preferences), [preferences])
+  useEffect(() => {
+    void getMinerBinaryProvenance().then(setMinerProvenance)
+  }, [])
 
   function update<K extends keyof NodePreferences>(key: K, value: NodePreferences[K]) {
     setDraft((current) => ({ ...current, [key]: value }))
+    if (key === 'minerExecutablePath') {
+      setMinerProvenance(null)
+      setReleaseVerification(null)
+    }
     setSaved(false)
   }
 
@@ -76,7 +98,11 @@ export function MiningPage({
     setChecking(true)
     try {
       const info = await onDetect()
-      if (info) setDraft((current) => ({ ...current, minerExecutablePath: info.path }))
+      if (info) {
+        setDraft((current) => ({ ...current, minerExecutablePath: info.path }))
+        setMinerProvenance(null)
+        setReleaseVerification(null)
+      }
     } finally {
       setChecking(false)
     }
@@ -88,6 +114,8 @@ export function MiningPage({
       const path = await onPickExecutable()
       if (!path) return
       setDraft((current) => ({ ...current, minerExecutablePath: path }))
+      setMinerProvenance(null)
+      setReleaseVerification(null)
       await onValidate(path)
     } finally {
       setChecking(false)
@@ -98,6 +126,45 @@ export function MiningPage({
     setChecking(true)
     try {
       await onValidate(draft.minerExecutablePath)
+      setMinerProvenance(await getMinerBinaryProvenance())
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  async function verifyRelease() {
+    setChecking(true)
+    setProvenanceError('')
+    try {
+      const path = await selectMinerReleaseArchive()
+      if (!path) return
+      const verification = await verifyApprovedMinerReleaseArchive(path)
+      setReleaseVerification(verification)
+      setMinerProvenance(null)
+      if (!verification.approved) setProvenanceError(verification.message)
+    } catch (nextError) {
+      setReleaseVerification(null)
+      setMinerProvenance(null)
+      setProvenanceError(readableError(nextError))
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  async function bindProvenance() {
+    if (!releaseVerification?.approved || !draft.minerExecutablePath) return
+    setChecking(true)
+    setProvenanceError('')
+    try {
+      const proof = await bindMinerBinaryToVerifiedArchive(
+        releaseVerification.archivePath,
+        draft.minerExecutablePath,
+      )
+      setMinerProvenance(proof.approved ? proof : null)
+      if (!proof.approved) setProvenanceError(proof.message)
+    } catch (nextError) {
+      setMinerProvenance(null)
+      setProvenanceError(readableError(nextError))
     } finally {
       setChecking(false)
     }
@@ -106,15 +173,15 @@ export function MiningPage({
   const configured = draft.minerExecutablePath.trim().length > 0
     && draft.minerAddress.trim().length > 0
   const nodeReady = nodeStatus.running && rpcHealth.reachable
-  const privateBlocked = draft.configProfile === 'private'
+  const privateBlocked = draft.configProfile === 'private' && !minerProvenance?.approved
   const telemetry = minerStatus.telemetry
 
   return (
     <>
-      {error && <div className="notice notice-error">{error}</div>}
+      {(error || provenanceError) && <div className="notice notice-error">{provenanceError || error}</div>}
       {privateBlocked && (
         <div className="notice notice-warning">
-          Private-profile mining remains blocked until the selected pulsedag-miner binary is linked to an approved release archive. Development and local profiles are enabled now.
+          Private-profile mining requires the selected pulsedag-miner binary to be linked byte-for-byte to its approved v2.3.0 release archive in this desktop session.
         </div>
       )}
       {!nodeReady && (
@@ -158,6 +225,37 @@ export function MiningPage({
               <code>{minerBinaryInfo.sha256}</code>
             </div>
           )}
+
+          <section className="miner-provenance-card">
+            <div>
+              <span className="eyebrow">Approved miner evidence</span>
+              <strong>{minerProvenance?.approved ? 'Executable linked' : 'Not linked in this session'}</strong>
+              <small>Required only for the private profile. Development and local binaries remain available without release proof.</small>
+            </div>
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={() => void verifyRelease()} disabled={busy || checking || minerStatus.running}>Verify miner archive…</button>
+              <button className="primary-button" type="button" onClick={() => void bindProvenance()} disabled={busy || checking || minerStatus.running || !releaseVerification?.approved || !draft.minerExecutablePath}>Link miner binary</button>
+            </div>
+            {releaseVerification && (
+              <div className={`release-result ${releaseVerification.approved ? 'approved' : 'rejected'}`}>
+                <strong>{releaseVerification.approved ? 'Approved miner archive' : 'Digest mismatch'}</strong>
+                <span>{releaseVerification.archiveName}</span>
+                <code>{releaseVerification.sha256}</code>
+                <small>{releaseVerification.message}</small>
+              </div>
+            )}
+            {minerProvenance && (
+              <div className="provenance-result approved">
+                <div className="provenance-result-header">
+                  <strong>Byte-for-byte match</strong>
+                  <span>{minerProvenance.target}</span>
+                </div>
+                <small>{minerProvenance.archiveName}</small>
+                <code>{minerProvenance.embeddedBinarySha256}</code>
+                <p>{minerProvenance.message}</p>
+              </div>
+            )}
+          </section>
 
           <label>
             <span>Reward address</span>
