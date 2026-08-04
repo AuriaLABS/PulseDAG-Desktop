@@ -15,6 +15,26 @@
   gap: 20px;
 }
 
+.miner-provenance-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-soft);
+}
+
+.miner-provenance-card > div:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.miner-provenance-card code,
+.miner-provenance-card .release-result,
+.miner-provenance-card .provenance-result {
+  overflow-wrap: anywhere;
+}
+
 .mining-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
