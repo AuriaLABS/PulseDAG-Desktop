@@ -1,0 +1,137 @@
+.mining-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.75fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.mining-control-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.mining-side-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.mining-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mining-actions {
+  align-items: center;
+}
+
+.mining-actions .primary-button {
+  margin-left: auto;
+}
+
+.mining-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.mining-metric-grid > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+}
+
+.mining-metric-grid span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mining-metric-grid strong {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.mining-runtime-details strong {
+  max-width: 58%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.miner-log-panel {
+  min-width: 0;
+}
+
+.miner-log-list {
+  max-height: 430px;
+  overflow: auto;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--code-bg);
+}
+
+.miner-log-line {
+  display: grid;
+  grid-template-columns: 78px 104px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+}
+
+.miner-log-line:last-child {
+  border-bottom: 0;
+}
+
+.miner-log-line time,
+.miner-log-line > span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.miner-log-line code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.miner-log-line.error-line code {
+  color: var(--danger);
+}
+
+.compact-empty {
+  padding: 24px 14px;
+}
+
+@media (max-width: 1050px) {
+  .mining-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .mining-field-grid,
+  .mining-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mining-actions .primary-button {
+    margin-left: 0;
+  }
+
+  .miner-log-line {
+    grid-template-columns: 70px minmax(0, 1fr);
+  }
+
+  .miner-log-line > span {
+    display: none;
+  }
+}
