@@ -3,6 +3,7 @@ import type { AppSection } from '../types'
 const sections: Array<{ id: AppSection; icon: string; label: string }> = [
   { id: 'overview', icon: '⌁', label: 'Overview' },
   { id: 'node', icon: '◉', label: 'Node' },
+  { id: 'mining', icon: '⚒', label: 'Mining' },
   { id: 'network', icon: '◎', label: 'Network' },
   { id: 'dag', icon: '◇', label: 'Live DAG' },
   { id: 'logs', icon: '≡', label: 'Logs' },
