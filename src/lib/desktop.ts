@@ -8,6 +8,7 @@ import type {
   DiagnosticExportResult,
   LogBatch,
   LogWindowSize,
+  MinerRuntimeStatus,
   NodeObservability,
   NodePreferences,
   NodeRuntimeStatus,
@@ -23,6 +24,14 @@ export const defaultPreferences: NodePreferences = {
   configProfile: 'dev',
   launchOnStartup: false,
   logWindow: 2000,
+  minerExecutablePath: '',
+  minerAddress: '',
+  minerThreads: Math.max(1, Math.min(4, navigator.hardwareConcurrency || 1)),
+  minerMaxTries: 500000,
+  minerSleepMs: 1000,
+  minerRefreshBeforeExpiryMs: 1000,
+  minerWorkerId: 'desktop-worker',
+  minerHeartbeat: true,
 }
 
 const stoppedStatus: NodeRuntimeStatus = {
@@ -32,6 +41,31 @@ const stoppedStatus: NodeRuntimeStatus = {
   uptimeSeconds: null,
   lastExitCode: null,
   executablePath: null,
+}
+
+const stoppedMinerStatus: MinerRuntimeStatus = {
+  running: false,
+  pid: null,
+  startedAtMs: null,
+  uptimeSeconds: null,
+  lastExitCode: null,
+  executablePath: null,
+  telemetry: {
+    lastEvent: null,
+    backend: null,
+    workers: null,
+    attempts: 0,
+    hashesPerSec: 0,
+    templatesReceived: 0,
+    templatesSkippedStale: 0,
+    submitsTotal: 0,
+    submitsAccepted: 0,
+    submitsRejected: 0,
+    lastRejectCode: null,
+    lastTemplateHeight: null,
+    lastAcceptedHeight: null,
+    updatedAtMs: null,
+  },
 }
 
 const supportedLogWindows: LogWindowSize[] = [250, 500, 1000, 2000, 5000]
@@ -44,6 +78,12 @@ function normalizeLogWindow(value: unknown): LogWindowSize {
   return typeof value === 'number' && supportedLogWindows.includes(value as LogWindowSize)
     ? value as LogWindowSize
     : defaultPreferences.logWindow
+}
+
+function normalizeInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  return typeof value === 'number' && Number.isInteger(value)
+    ? Math.min(maximum, Math.max(minimum, value))
+    : fallback
 }
 
 export async function getDesktopBridgeStatus(): Promise<DesktopBridgeStatus> {
@@ -63,6 +103,14 @@ export async function getDesktopBridgeStatus(): Promise<DesktopBridgeStatus> {
 export async function selectNodeBinary(): Promise<string | null> {
   return selectedPath(await open({
     title: 'Select the pulsedagd executable',
+    directory: false,
+    multiple: false,
+  }))
+}
+
+export async function selectMinerBinary(): Promise<string | null> {
+  return selectedPath(await open({
+    title: 'Select the pulsedag-miner executable',
     directory: false,
     multiple: false,
   }))
@@ -97,8 +145,16 @@ export async function discoverNodeBinary(): Promise<BinaryInfo | null> {
   return invoke<BinaryInfo | null>('discover_node_binary')
 }
 
+export async function discoverMinerBinary(): Promise<BinaryInfo | null> {
+  return invoke<BinaryInfo | null>('discover_miner_binary')
+}
+
 export async function validateNodeBinary(path: string): Promise<BinaryInfo> {
   return invoke<BinaryInfo>('validate_node_binary', { path })
+}
+
+export async function validateMinerBinary(path: string): Promise<BinaryInfo> {
+  return invoke<BinaryInfo>('validate_miner_binary', { path })
 }
 
 export async function verifyApprovedReleaseArchive(path: string): Promise<ReleaseVerification> {
@@ -125,6 +181,14 @@ export async function getNodeStatus(): Promise<NodeRuntimeStatus> {
     return await invoke<NodeRuntimeStatus>('get_node_status')
   } catch {
     return stoppedStatus
+  }
+}
+
+export async function getMinerStatus(): Promise<MinerRuntimeStatus> {
+  try {
+    return await invoke<MinerRuntimeStatus>('get_miner_status')
+  } catch {
+    return stoppedMinerStatus
   }
 }
 
@@ -168,9 +232,38 @@ export async function stopNode(): Promise<NodeRuntimeStatus> {
   return invoke<NodeRuntimeStatus>('stop_node')
 }
 
+export async function startMiner(preferences: NodePreferences): Promise<MinerRuntimeStatus> {
+  return invoke<MinerRuntimeStatus>('start_miner', {
+    config: {
+      executablePath: preferences.minerExecutablePath,
+      nodeEndpoint: preferences.rpcEndpoint,
+      minerAddress: preferences.minerAddress,
+      configProfile: preferences.configProfile,
+      threads: preferences.minerThreads,
+      maxTries: preferences.minerMaxTries,
+      sleepMs: preferences.minerSleepMs,
+      refreshBeforeExpiryMs: preferences.minerRefreshBeforeExpiryMs,
+      workerId: preferences.minerWorkerId,
+      heartbeat: preferences.minerHeartbeat,
+    },
+  })
+}
+
+export async function stopMiner(): Promise<MinerRuntimeStatus> {
+  return invoke<MinerRuntimeStatus>('stop_miner')
+}
+
 export async function getNodeLogs(after = 0, limit = 250): Promise<LogBatch> {
   try {
     return await invoke<LogBatch>('get_node_logs', { after, limit })
+  } catch {
+    return { entries: [], nextCursor: after }
+  }
+}
+
+export async function getMinerLogs(after = 0, limit = 250): Promise<LogBatch> {
+  try {
+    return await invoke<LogBatch>('get_miner_logs', { after, limit })
   } catch {
     return { entries: [], nextCursor: after }
   }
@@ -186,6 +279,10 @@ export async function getNodeLogTail(limit: LogWindowSize): Promise<LogBatch> {
 
 export async function clearNodeLogs(): Promise<void> {
   await invoke('clear_node_logs')
+}
+
+export async function clearMinerLogs(): Promise<void> {
+  await invoke('clear_miner_logs')
 }
 
 export async function exportDiagnostics(
@@ -219,6 +316,15 @@ export function loadNodePreferences(): NodePreferences {
       ...parsed,
       configProfile: migratedProfile,
       logWindow: normalizeLogWindow(parsed.logWindow),
+      minerThreads: normalizeInteger(parsed.minerThreads, defaultPreferences.minerThreads, 1, 256),
+      minerMaxTries: normalizeInteger(parsed.minerMaxTries, defaultPreferences.minerMaxTries, 1, 100000000),
+      minerSleepMs: normalizeInteger(parsed.minerSleepMs, defaultPreferences.minerSleepMs, 100, 60000),
+      minerRefreshBeforeExpiryMs: normalizeInteger(
+        parsed.minerRefreshBeforeExpiryMs,
+        defaultPreferences.minerRefreshBeforeExpiryMs,
+        0,
+        60000,
+      ),
     } as NodePreferences
   } catch {
     return defaultPreferences
