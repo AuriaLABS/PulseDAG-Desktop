@@ -11,12 +11,24 @@ const SOURCE_COMMIT = '7e43225f01ac05d15e5f1e3f1550d7850bf18cbc'
 const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 const APPROVED_ASSETS = new Map([
   ['pulsedagd-v2.3.0-x86_64-unknown-linux-gnu.tar.gz', {
+    kind: 'node',
     target: 'x86_64-unknown-linux-gnu',
     binaryName: 'pulsedagd',
   }],
   ['pulsedagd-v2.3.0-x86_64-pc-windows-msvc.zip', {
+    kind: 'node',
     target: 'x86_64-pc-windows-msvc',
     binaryName: 'pulsedagd.exe',
+  }],
+  ['pulsedag-miner-v2.3.0-x86_64-unknown-linux-gnu.tar.gz', {
+    kind: 'miner',
+    target: 'x86_64-unknown-linux-gnu',
+    binaryName: 'pulsedag-miner',
+  }],
+  ['pulsedag-miner-v2.3.0-x86_64-pc-windows-msvc.zip', {
+    kind: 'miner',
+    target: 'x86_64-pc-windows-msvc',
+    binaryName: 'pulsedag-miner.exe',
   }],
 ])
 
@@ -211,27 +223,39 @@ async function main() {
     repository: 'AuriaLABS/PulseDAG',
     releaseTag: RELEASE_TAG,
     sourceCommit: SOURCE_COMMIT,
+    artifactKind: approved.kind,
     assetName,
     target: approved.target,
     sizeBytes: downloaded.bytes,
     sha256: downloaded.sha256,
     verifiedAt: new Date().toISOString(),
   }
-  const evidencePath = join(outputDirectory, 'official-node-release-evidence.json')
+  const evidenceBase = approved.kind === 'miner' ? 'official-miner-release-evidence.json' : 'official-node-release-evidence.json'
+  const checksumBase = approved.kind === 'miner' ? 'OFFICIAL_MINER_SHA256SUMS.txt' : 'OFFICIAL_NODE_SHA256SUMS.txt'
+  const evidencePath = join(outputDirectory, evidenceBase)
   await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { flag: 'wx' })
   await writeFile(
-    join(outputDirectory, 'OFFICIAL_NODE_SHA256SUMS.txt'),
+    join(outputDirectory, checksumBase),
     `${downloaded.sha256}  ${assetName}\n`,
     { flag: 'wx' },
   )
 
-  await appendEnvironment({
-    PULSEDAG_PROVENANCE_ARCHIVE: archivePath,
-    PULSEDAG_PROVENANCE_ARCHIVE_SHA256: downloaded.sha256,
-    PULSEDAG_RELEASE_EVIDENCE: evidencePath,
-    PULSEDAG_RELEASE_ARCHIVE_ROOT: archiveRoot,
-    PULSEDAG_RELEASE_BINARY_NAME: approved.binaryName,
-  })
+  const environment = approved.kind === 'miner'
+    ? {
+        PULSEDAG_MINER_PROVENANCE_ARCHIVE: archivePath,
+        PULSEDAG_MINER_PROVENANCE_ARCHIVE_SHA256: downloaded.sha256,
+        PULSEDAG_MINER_RELEASE_EVIDENCE: evidencePath,
+        PULSEDAG_MINER_RELEASE_ARCHIVE_ROOT: archiveRoot,
+        PULSEDAG_MINER_RELEASE_BINARY_NAME: approved.binaryName,
+      }
+    : {
+        PULSEDAG_PROVENANCE_ARCHIVE: archivePath,
+        PULSEDAG_PROVENANCE_ARCHIVE_SHA256: downloaded.sha256,
+        PULSEDAG_RELEASE_EVIDENCE: evidencePath,
+        PULSEDAG_RELEASE_ARCHIVE_ROOT: archiveRoot,
+        PULSEDAG_RELEASE_BINARY_NAME: approved.binaryName,
+      }
+  await appendEnvironment(environment)
   await appendOutputs({
     archive_path: archivePath,
     archive_sha256: downloaded.sha256,
@@ -239,6 +263,7 @@ async function main() {
     binary_name: approved.binaryName,
     evidence_path: evidencePath,
     target: approved.target,
+    artifact_kind: approved.kind,
   })
 
   console.log(`Verified ${assetName}`)
