@@ -248,6 +248,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(NodeSupervisor::default())
+        .manage(MinerSupervisor::default())
         .invoke_handler(tauri::generate_handler![
             get_desktop_status,
             discover_node_binary,
@@ -266,6 +267,13 @@ pub fn run() {
             get_node_log_tail,
             clear_node_logs,
             export_diagnostics,
+            discover_miner_binary,
+            validate_miner_binary,
+            get_miner_status,
+            start_miner,
+            stop_miner,
+            get_miner_logs,
+            clear_miner_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running PulseDAG Desktop");
