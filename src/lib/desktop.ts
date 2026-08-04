@@ -126,10 +126,19 @@ export async function selectDataDirectory(): Promise<string | null> {
 
 export async function selectReleaseArchive(): Promise<string | null> {
   return selectedPath(await open({
-    title: 'Select an official PulseDAG v2.3.0 release archive',
+    title: 'Select an official PulseDAG v2.3.0 node release archive',
     directory: false,
     multiple: false,
     filters: [{ name: 'Release archives', extensions: ['zip', 'gz'] }],
+  }))
+}
+
+export async function selectMinerReleaseArchive(): Promise<string | null> {
+  return selectedPath(await open({
+    title: 'Select an official PulseDAG v2.3.0 miner release archive',
+    directory: false,
+    multiple: false,
+    filters: [{ name: 'Miner release archives', extensions: ['zip', 'gz'] }],
   }))
 }
 
@@ -161,6 +170,10 @@ export async function verifyApprovedReleaseArchive(path: string): Promise<Releas
   return invoke<ReleaseVerification>('verify_approved_release_archive', { path })
 }
 
+export async function verifyApprovedMinerReleaseArchive(path: string): Promise<ReleaseVerification> {
+  return invoke<ReleaseVerification>('verify_approved_miner_release_archive', { path })
+}
+
 export async function bindBinaryToVerifiedArchive(
   archivePath: string,
   executablePath: string,
@@ -168,9 +181,24 @@ export async function bindBinaryToVerifiedArchive(
   return invoke<BinaryProvenance>('bind_binary_to_verified_archive', { archivePath, executablePath })
 }
 
+export async function bindMinerBinaryToVerifiedArchive(
+  archivePath: string,
+  executablePath: string,
+): Promise<BinaryProvenance> {
+  return invoke<BinaryProvenance>('bind_miner_binary_to_verified_archive', { archivePath, executablePath })
+}
+
 export async function getBinaryProvenance(): Promise<BinaryProvenance | null> {
   try {
     return await invoke<BinaryProvenance | null>('get_binary_provenance')
+  } catch {
+    return null
+  }
+}
+
+export async function getMinerBinaryProvenance(): Promise<BinaryProvenance | null> {
+  try {
+    return await invoke<BinaryProvenance | null>('get_miner_binary_provenance')
   } catch {
     return null
   }
@@ -233,7 +261,8 @@ export async function stopNode(): Promise<NodeRuntimeStatus> {
 }
 
 export async function startMiner(preferences: NodePreferences): Promise<MinerRuntimeStatus> {
-  return invoke<MinerRuntimeStatus>('start_miner', {
+  const command = preferences.configProfile === 'private' ? 'start_verified_miner' : 'start_miner'
+  return invoke<MinerRuntimeStatus>(command, {
     config: {
       executablePath: preferences.minerExecutablePath,
       nodeEndpoint: preferences.rpcEndpoint,
