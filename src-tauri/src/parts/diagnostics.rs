@@ -249,6 +249,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(NodeSupervisor::default())
         .manage(MinerSupervisor::default())
+        .manage(MinerProvenanceRegistry::default())
         .invoke_handler(tauri::generate_handler![
             get_desktop_status,
             discover_node_binary,
@@ -269,8 +270,12 @@ pub fn run() {
             export_diagnostics,
             discover_miner_binary,
             validate_miner_binary,
+            verify_approved_miner_release_archive,
+            bind_miner_binary_to_verified_archive,
+            get_miner_binary_provenance,
             get_miner_status,
             start_miner,
+            start_verified_miner,
             stop_miner,
             get_miner_logs,
             clear_miner_logs,
