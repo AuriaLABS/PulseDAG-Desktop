@@ -1,4 +1,4 @@
-export type AppSection = 'overview' | 'node' | 'network' | 'dag' | 'logs' | 'settings'
+export type AppSection = 'overview' | 'node' | 'mining' | 'network' | 'dag' | 'logs' | 'settings'
 
 export type LogWindowSize = 250 | 500 | 1000 | 2000 | 5000
 
@@ -17,6 +17,14 @@ export type NodePreferences = {
   configProfile: 'dev' | 'local' | 'private'
   launchOnStartup: boolean
   logWindow: LogWindowSize
+  minerExecutablePath: string
+  minerAddress: string
+  minerThreads: number
+  minerMaxTries: number
+  minerSleepMs: number
+  minerRefreshBeforeExpiryMs: number
+  minerWorkerId: string
+  minerHeartbeat: boolean
 }
 
 export type BinaryInfo = {
@@ -62,6 +70,33 @@ export type NodeRuntimeStatus = {
   uptimeSeconds: number | null
   lastExitCode: number | null
   executablePath: string | null
+}
+
+export type MinerTelemetry = {
+  lastEvent: string | null
+  backend: string | null
+  workers: number | null
+  attempts: number
+  hashesPerSec: number
+  templatesReceived: number
+  templatesSkippedStale: number
+  submitsTotal: number
+  submitsAccepted: number
+  submitsRejected: number
+  lastRejectCode: string | null
+  lastTemplateHeight: number | null
+  lastAcceptedHeight: number | null
+  updatedAtMs: number | null
+}
+
+export type MinerRuntimeStatus = {
+  running: boolean
+  pid: number | null
+  startedAtMs: number | null
+  uptimeSeconds: number | null
+  lastExitCode: number | null
+  executablePath: string | null
+  telemetry: MinerTelemetry
 }
 
 export type RpcHealth = {

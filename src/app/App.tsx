@@ -3,11 +3,15 @@ import { Sidebar } from '../components/Sidebar'
 import {
   bindBinaryToVerifiedArchive,
   checkRpcHealth,
+  clearMinerLogs,
   clearNodeLogs,
+  discoverMinerBinary,
   discoverNodeBinary,
   exportDiagnostics,
   getBinaryProvenance,
   getDesktopBridgeStatus,
+  getMinerLogs,
+  getMinerStatus,
   getNodeLogs,
   getNodeLogTail,
   getNodeObservability,
@@ -16,15 +20,20 @@ import {
   saveNodePreferences,
   selectDataDirectory,
   selectDiagnosticOutput,
+  selectMinerBinary,
   selectNodeBinary,
   selectReleaseArchive,
+  startMiner,
   startNode,
+  stopMiner,
   stopNode,
+  validateMinerBinary,
   validateNodeBinary,
   verifyApprovedReleaseArchive,
 } from '../lib/desktop'
 import { LiveDagPage } from '../pages/LiveDagPage'
 import { LogsPage } from '../pages/LogsPage'
+import { MiningPage } from '../pages/MiningPage'
 import { NetworkPage } from '../pages/NetworkPage'
 import { NodePage } from '../pages/NodePage'
 import { OverviewPage } from '../pages/OverviewPage'
@@ -37,6 +46,7 @@ import type {
   DiagnosticExportResult,
   LogEntry,
   LogWindowSize,
+  MinerRuntimeStatus,
   NodeObservability,
   NodePreferences,
   NodeRuntimeStatus,
@@ -47,6 +57,7 @@ import type {
 const sectionTitles: Record<AppSection, { eyebrow: string; title: string }> = {
   overview: { eyebrow: 'PulseDAG operator workspace', title: 'Overview' },
   node: { eyebrow: 'Local process supervision', title: 'Node' },
+  mining: { eyebrow: 'External proof-of-work control', title: 'Mining' },
   network: { eyebrow: 'Peer and synchronization intelligence', title: 'Network' },
   dag: { eyebrow: 'Realtime consensus activity', title: 'Live DAG' },
   logs: { eyebrow: 'Local diagnostics', title: 'Logs' },
@@ -60,6 +71,31 @@ const initialNodeStatus: NodeRuntimeStatus = {
   uptimeSeconds: null,
   lastExitCode: null,
   executablePath: null,
+}
+
+const initialMinerStatus: MinerRuntimeStatus = {
+  running: false,
+  pid: null,
+  startedAtMs: null,
+  uptimeSeconds: null,
+  lastExitCode: null,
+  executablePath: null,
+  telemetry: {
+    lastEvent: null,
+    backend: null,
+    workers: null,
+    attempts: 0,
+    hashesPerSec: 0,
+    templatesReceived: 0,
+    templatesSkippedStale: 0,
+    submitsTotal: 0,
+    submitsAccepted: 0,
+    submitsRejected: 0,
+    lastRejectCode: null,
+    lastTemplateHeight: null,
+    lastAcceptedHeight: null,
+    updatedAtMs: null,
+  },
 }
 
 const initialRpcHealth: RpcHealth = {
@@ -79,18 +115,22 @@ export function App() {
   const [bridge, setBridge] = useState<DesktopBridgeStatus | null>(null)
   const [preferences, setPreferences] = useState<NodePreferences>(() => loadNodePreferences())
   const [binaryInfo, setBinaryInfo] = useState<BinaryInfo | null>(null)
+  const [minerBinaryInfo, setMinerBinaryInfo] = useState<BinaryInfo | null>(null)
   const [releaseVerification, setReleaseVerification] = useState<ReleaseVerification | null>(null)
   const [binaryProvenance, setBinaryProvenance] = useState<BinaryProvenance | null>(null)
   const [diagnosticExport, setDiagnosticExport] = useState<DiagnosticExportResult | null>(null)
   const [nodeStatus, setNodeStatus] = useState<NodeRuntimeStatus>(initialNodeStatus)
+  const [minerStatus, setMinerStatus] = useState<MinerRuntimeStatus>(initialMinerStatus)
   const [rpcHealth, setRpcHealth] = useState<RpcHealth>(initialRpcHealth)
   const [observability, setObservability] = useState<NodeObservability | null>(null)
   const [observabilityError, setObservabilityError] = useState('')
   const [observabilityLoading, setObservabilityLoading] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([])
+  const [minerLogs, setMinerLogs] = useState<LogEntry[]>([])
   const [busy, setBusy] = useState(false)
   const [operationError, setOperationError] = useState('')
   const logCursor = useRef(0)
+  const minerLogCursor = useRef(0)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -105,12 +145,14 @@ export function App() {
   }, [])
 
   const refreshRuntime = useCallback(async () => {
-    const [nextStatus, nextRpc] = await Promise.all([
+    const [nextStatus, nextRpc, nextMinerStatus] = await Promise.all([
       getNodeStatus(),
       checkRpcHealth(preferences.rpcEndpoint),
+      getMinerStatus(),
     ])
     setNodeStatus(nextStatus)
     setRpcHealth(nextRpc)
+    setMinerStatus(nextMinerStatus)
   }, [preferences.rpcEndpoint])
 
   const refreshObservability = useCallback(async () => {
@@ -171,6 +213,24 @@ export function App() {
     }
   }, [nodeStatus.running, preferences.logWindow])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function pollMinerLogs() {
+      const batch = await getMinerLogs(minerLogCursor.current, 300)
+      if (cancelled || batch.entries.length === 0) return
+      minerLogCursor.current = batch.nextCursor
+      setMinerLogs((current) => [...current, ...batch.entries].slice(-500))
+    }
+
+    void pollMinerLogs()
+    const timer = window.setInterval(() => void pollMinerLogs(), minerStatus.running ? 800 : 2_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [minerStatus.running])
+
   async function perform(action: () => Promise<void>) {
     setBusy(true)
     setOperationError('')
@@ -201,6 +261,19 @@ export function App() {
     }
   }
 
+  async function handleValidateMiner(path = preferences.minerExecutablePath): Promise<BinaryInfo | null> {
+    try {
+      const info = await validateMinerBinary(path)
+      setMinerBinaryInfo(info)
+      setOperationError('')
+      return info
+    } catch (error) {
+      setMinerBinaryInfo(null)
+      setOperationError(readableError(error))
+      return null
+    }
+  }
+
   async function handleDiscover(): Promise<BinaryInfo | null> {
     try {
       const info = await discoverNodeBinary()
@@ -221,9 +294,39 @@ export function App() {
     }
   }
 
+  async function handleDiscoverMiner(): Promise<BinaryInfo | null> {
+    try {
+      const info = await discoverMinerBinary()
+      if (!info) {
+        setOperationError('pulsedag-miner was not found beside the application, in ./bin or on PATH.')
+        return null
+      }
+      const next = { ...preferences, minerExecutablePath: info.path }
+      setPreferences(next)
+      saveNodePreferences(next)
+      setMinerBinaryInfo(info)
+      setOperationError('')
+      return info
+    } catch (error) {
+      setOperationError(readableError(error))
+      return null
+    }
+  }
+
   async function handlePickExecutable(): Promise<string | null> {
     try {
       const path = await selectNodeBinary()
+      setOperationError('')
+      return path
+    } catch (error) {
+      setOperationError(readableError(error))
+      return null
+    }
+  }
+
+  async function handlePickMinerExecutable(): Promise<string | null> {
+    try {
+      const path = await selectMinerBinary()
       setOperationError('')
       return path
     } catch (error) {
@@ -284,12 +387,16 @@ export function App() {
 
   function savePreferences(next: NodePreferences) {
     const pathChanged = next.executablePath !== preferences.executablePath
+    const minerPathChanged = next.minerExecutablePath !== preferences.minerExecutablePath
     const endpointChanged = next.rpcEndpoint !== preferences.rpcEndpoint
     saveNodePreferences(next)
     setPreferences(next)
     if (pathChanged) {
       setBinaryInfo(null)
       setBinaryProvenance(null)
+    }
+    if (minerPathChanged) {
+      setMinerBinaryInfo(null)
     }
     if (endpointChanged) {
       setObservability(null)
@@ -323,12 +430,33 @@ export function App() {
     })
   }
 
+  function handleStartMiner() {
+    void perform(async () => {
+      saveNodePreferences(preferences)
+      const info = await validateMinerBinary(preferences.minerExecutablePath)
+      setMinerBinaryInfo(info)
+      setMinerStatus(await startMiner(preferences))
+    })
+  }
+
+  function handleStopMiner() {
+    void perform(async () => setMinerStatus(await stopMiner()))
+  }
+
   function handleClearLogs() {
     void perform(async () => {
       await clearNodeLogs()
       logCursor.current = 0
       setLogs([])
       setDiagnosticExport(null)
+    })
+  }
+
+  function handleClearMinerLogs() {
+    void perform(async () => {
+      await clearMinerLogs()
+      minerLogCursor.current = 0
+      setMinerLogs([])
     })
   }
 
@@ -377,6 +505,26 @@ export function App() {
         onRestart={handleRestart}
         onValidate={() => void handleValidate()}
         onOpenSettings={() => setSection('settings')}
+      />
+    )
+  } else if (section === 'mining') {
+    content = (
+      <MiningPage
+        preferences={preferences}
+        minerBinaryInfo={minerBinaryInfo}
+        minerStatus={minerStatus}
+        nodeStatus={nodeStatus}
+        rpcHealth={rpcHealth}
+        logs={minerLogs}
+        busy={busy}
+        error={operationError}
+        onSave={savePreferences}
+        onDetect={handleDiscoverMiner}
+        onValidate={handleValidateMiner}
+        onPickExecutable={handlePickMinerExecutable}
+        onStart={handleStartMiner}
+        onStop={handleStopMiner}
+        onClearLogs={handleClearMinerLogs}
       />
     )
   } else if (section === 'settings') {
@@ -434,7 +582,7 @@ export function App() {
   }
 
   const showGlobalOperationError = operationError
-    && !['node', 'settings', 'logs'].includes(section)
+    && !['node', 'mining', 'settings', 'logs'].includes(section)
 
   return (
     <div className="app-shell">
@@ -443,6 +591,7 @@ export function App() {
         <header className="topbar">
           <div><span className="eyebrow">{heading.eyebrow}</span><h1>{heading.title}</h1></div>
           <div className="topbar-actions">
+            {minerStatus.running && <span className="sync-pill online"><i />Mining · {minerStatus.telemetry.hashesPerSec.toFixed(0)} H/s</span>}
             <span className={`sync-pill ${online ? 'online' : 'warning'}`}><i />{connectionLabel}{nodeStatus.pid ? ` · PID ${nodeStatus.pid}` : ''}</span>
             <button className="icon-button" onClick={handleRefreshAll} aria-label="Refresh node status and read-only data">↻</button>
             <button className="icon-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">{theme === 'dark' ? '☼' : '◐'}</button>

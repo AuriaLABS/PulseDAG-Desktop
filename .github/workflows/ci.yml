@@ -29,5 +29,6 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml observability_paths_are_exactly_allowlisted
       - run: cargo test --manifest-path src-tauri/Cargo.toml entity_
       - run: cargo test --manifest-path src-tauri/Cargo.toml runtime_
+      - run: cargo test --manifest-path src-tauri/Cargo.toml miner_
       - run: cargo test --manifest-path src-tauri/Cargo.toml provenance_
       - run: cargo test --manifest-path src-tauri/Cargo.toml diagnostic_
