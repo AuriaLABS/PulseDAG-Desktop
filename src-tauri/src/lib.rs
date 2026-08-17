@@ -1,3 +1,5 @@
+mod v2_4_compat;
+
 include!("parts/foundation.rs");
 include!("parts/verification.rs");
 include!("parts/provenance.rs");
