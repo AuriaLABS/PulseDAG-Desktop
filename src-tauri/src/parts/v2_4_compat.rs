@@ -8,6 +8,54 @@ pub(crate) const V2_4_PRIVATE_CHAIN_ID: &str = "pulsedag-private-v2.4.0";
 pub(crate) const V2_4_INSTALL_GUIDE: &str = "INSTALL_BINARIES_V2_4_0.md";
 pub(crate) const V2_4_PRIVATE_STATE_MARKER: &str = ".pulsedag-desktop-v2.4-private";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum V2_4CandidateBinaryKind {
+    Node,
+    Miner,
+}
+
+impl V2_4CandidateBinaryKind {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "node" => Ok(Self::Node),
+            "miner" => Ok(Self::Miner),
+            _ => Err("v2.4 candidate binary kind must be node or miner.".into()),
+        }
+    }
+
+    fn archive_prefix(self) -> &'static str {
+        match self {
+            Self::Node => "pulsedagd",
+            Self::Miner => "pulsedag-miner",
+        }
+    }
+
+    fn public_name(self) -> &'static str {
+        match self {
+            Self::Node => "node",
+            Self::Miner => "miner",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct V2_4CandidateArchiveInspection {
+    archive_name: String,
+    archive_sha256: String,
+    archive_size_bytes: u64,
+    binary_kind: String,
+    release_tag: String,
+    source_commit: String,
+    target: String,
+    embedded_path: String,
+    embedded_binary_sha256: String,
+    embedded_binary_size_bytes: u64,
+    structurally_valid: bool,
+    approved: bool,
+    message: String,
+}
+
 pub(crate) fn is_v2_4_candidate_archive_name(name: &str, binary: &str) -> bool {
     let prefix = format!("{binary}-{V2_4_CANDIDATE_TAG}-");
     name.starts_with(&prefix) && (name.ends_with(".tar.gz") || name.ends_with(".zip"))
@@ -25,6 +73,157 @@ pub(crate) fn v2_4_private_state_marker_contents() -> String {
     format!(
         "network_profile={V2_4_PRIVATE_NETWORK_PROFILE}\nchain_id={V2_4_PRIVATE_CHAIN_ID}\nrelease={V2_4_CANDIDATE_TAG}\n"
     )
+}
+
+fn supported_v2_4_candidate_target() -> Result<&'static str, String> {
+    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+    {
+        return Ok("x86_64-unknown-linux-gnu");
+    }
+    #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
+    {
+        return Ok("x86_64-pc-windows-msvc");
+    }
+    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
+    {
+        return Ok("x86_64-apple-darwin");
+    }
+    #[allow(unreachable_code)]
+    Err("PulseDAG v2.4.0 does not define a candidate archive for this desktop target.".into())
+}
+
+fn v2_4_candidate_archive_layout(
+    file_name: &str,
+    binary_kind: V2_4CandidateBinaryKind,
+) -> Result<ProvenanceArchiveLayout, String> {
+    let (base_name, kind) = if let Some(base) = file_name.strip_suffix(".tar.gz") {
+        (base.to_string(), ProvenanceArchiveKind::TarGz)
+    } else if let Some(base) = file_name.strip_suffix(".zip") {
+        (base.to_string(), ProvenanceArchiveKind::Zip)
+    } else {
+        return Err("A v2.4 candidate archive must be a .tar.gz or .zip file.".into());
+    };
+
+    let prefix = format!("{}-{V2_4_CANDIDATE_TAG}-", binary_kind.archive_prefix());
+    let target = base_name
+        .strip_prefix(&prefix)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "The archive name does not identify the PulseDAG v2.4.0 {} candidate.",
+                binary_kind.public_name()
+            )
+        })?
+        .to_string();
+
+    if !matches!(
+        target.as_str(),
+        "x86_64-unknown-linux-gnu" | "x86_64-pc-windows-msvc" | "x86_64-apple-darwin"
+    ) {
+        return Err("The v2.4 candidate archive target is not in the release workflow allowlist.".into());
+    }
+
+    let windows_target = target == "x86_64-pc-windows-msvc";
+    match (kind, windows_target) {
+        (ProvenanceArchiveKind::Zip, true) | (ProvenanceArchiveKind::TarGz, false) => {}
+        _ => return Err("The v2.4 candidate archive format does not match its target.".into()),
+    }
+
+    let binary_name = match (binary_kind, windows_target) {
+        (V2_4CandidateBinaryKind::Node, true) => "pulsedagd.exe",
+        (V2_4CandidateBinaryKind::Node, false) => "pulsedagd",
+        (V2_4CandidateBinaryKind::Miner, true) => "pulsedag-miner.exe",
+        (V2_4CandidateBinaryKind::Miner, false) => "pulsedag-miner",
+    }
+    .to_string();
+    let root = PathBuf::from(&base_name);
+    let binary_path = root.join(&binary_name);
+    let allowed_files = [
+        binary_path.clone(),
+        root.join("README.md"),
+        root.join(V2_4_INSTALL_GUIDE),
+    ]
+    .into_iter()
+    .collect();
+
+    Ok(ProvenanceArchiveLayout {
+        base_name,
+        target,
+        binary_name,
+        binary_path,
+        allowed_files,
+        kind,
+    })
+}
+
+fn inspect_v2_4_candidate_archive_path(
+    path: &Path,
+    binary_kind: V2_4CandidateBinaryKind,
+) -> Result<V2_4CandidateArchiveInspection, String> {
+    let canonical = fs::canonicalize(path)
+        .map_err(|error| format!("Cannot resolve the v2.4 candidate archive: {error}"))?;
+    let metadata = fs::metadata(&canonical)
+        .map_err(|error| format!("Cannot inspect the v2.4 candidate archive: {error}"))?;
+    if !metadata.is_file() || metadata.len() > MAX_PROVENANCE_ARCHIVE_BYTES {
+        return Err("The v2.4 candidate archive is not a regular file within the safety limit.".into());
+    }
+
+    let file_name = canonical
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "The v2.4 candidate archive name is not valid UTF-8.".to_string())?;
+    let layout = v2_4_candidate_archive_layout(file_name, binary_kind)?;
+    let host_target = supported_v2_4_candidate_target()?;
+    if layout.target != host_target {
+        return Err(format!(
+            "The v2.4 candidate target {} does not match this desktop target {host_target}.",
+            layout.target
+        ));
+    }
+
+    let mut file = File::open(&canonical)
+        .map_err(|error| format!("Cannot open the v2.4 candidate archive: {error}"))?;
+    let (archive_sha256, archive_size_bytes) = hash_reader_limited(
+        &mut file,
+        MAX_PROVENANCE_ARCHIVE_BYTES,
+        "the v2.4 candidate archive",
+    )?;
+    if archive_size_bytes != metadata.len() {
+        return Err("The v2.4 candidate archive changed while it was being inspected.".into());
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| format!("Cannot rewind the v2.4 candidate archive: {error}"))?;
+
+    let evidence = match layout.kind {
+        ProvenanceArchiveKind::Zip => inspect_zip_binary(file, &layout, archive_sha256.clone()),
+        ProvenanceArchiveKind::TarGz => inspect_tar_binary(file, &layout, archive_sha256.clone()),
+    }?;
+
+    Ok(V2_4CandidateArchiveInspection {
+        archive_name: file_name.to_string(),
+        archive_sha256,
+        archive_size_bytes,
+        binary_kind: binary_kind.public_name().to_string(),
+        release_tag: V2_4_CANDIDATE_TAG.to_string(),
+        source_commit: V2_4_CANDIDATE_COMMIT.to_string(),
+        target: evidence.target,
+        embedded_path: evidence.embedded_path,
+        embedded_binary_sha256: evidence.binary_sha256,
+        embedded_binary_size_bytes: evidence.binary_size_bytes,
+        structurally_valid: true,
+        approved: false,
+        message: "The archive matches the local PulseDAG v2.4.0 candidate layout and safety bounds, but it is not approved release provenance. Publication digest/provenance verification is still required before private launch."
+            .into(),
+    })
+}
+
+#[tauri::command]
+fn inspect_v2_4_candidate_archive(
+    path: String,
+    binary_kind: String,
+) -> Result<V2_4CandidateArchiveInspection, String> {
+    let kind = V2_4CandidateBinaryKind::parse(&binary_kind)?;
+    inspect_v2_4_candidate_archive_path(Path::new(path.trim()), kind)
 }
 
 #[cfg(test)]
@@ -80,6 +279,68 @@ mod tests {
             "pulsedagd-v2.4.0-x86_64-pc-windows-msvc.zip.exe",
             "pulsedagd"
         ));
+    }
+
+    #[test]
+    fn v2_4_candidate_layout_is_exact_for_node_and_miner() {
+        let node = v2_4_candidate_archive_layout(
+            "pulsedagd-v2.4.0-x86_64-pc-windows-msvc.zip",
+            V2_4CandidateBinaryKind::Node,
+        )
+        .unwrap();
+        assert_eq!(node.target, "x86_64-pc-windows-msvc");
+        assert_eq!(node.binary_name, "pulsedagd.exe");
+        assert!(node.allowed_files.contains(&PathBuf::from(
+            "pulsedagd-v2.4.0-x86_64-pc-windows-msvc/INSTALL_BINARIES_V2_4_0.md"
+        )));
+        assert_eq!(node.allowed_files.len(), 3);
+
+        let miner = v2_4_candidate_archive_layout(
+            "pulsedag-miner-v2.4.0-x86_64-unknown-linux-gnu.tar.gz",
+            V2_4CandidateBinaryKind::Miner,
+        )
+        .unwrap();
+        assert_eq!(miner.target, "x86_64-unknown-linux-gnu");
+        assert_eq!(miner.binary_name, "pulsedag-miner");
+        assert_eq!(miner.allowed_files.len(), 3);
+    }
+
+    #[test]
+    fn v2_4_candidate_layout_rejects_wrong_kind_target_and_format() {
+        assert!(v2_4_candidate_archive_layout(
+            "pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip",
+            V2_4CandidateBinaryKind::Node,
+        )
+        .is_err());
+        assert!(v2_4_candidate_archive_layout(
+            "pulsedagd-v2.4.0-aarch64-unknown-linux-gnu.tar.gz",
+            V2_4CandidateBinaryKind::Node,
+        )
+        .is_err());
+        assert!(v2_4_candidate_archive_layout(
+            "pulsedagd-v2.4.0-x86_64-pc-windows-msvc.tar.gz",
+            V2_4CandidateBinaryKind::Node,
+        )
+        .is_err());
+        assert!(v2_4_candidate_archive_layout(
+            "pulsedag-miner-v2.4.0-x86_64-unknown-linux-gnu.zip",
+            V2_4CandidateBinaryKind::Miner,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn v2_4_candidate_binary_kind_is_closed() {
+        assert_eq!(
+            V2_4CandidateBinaryKind::parse("node").unwrap(),
+            V2_4CandidateBinaryKind::Node
+        );
+        assert_eq!(
+            V2_4CandidateBinaryKind::parse("miner").unwrap(),
+            V2_4CandidateBinaryKind::Miner
+        );
+        assert!(V2_4CandidateBinaryKind::parse("wallet").is_err());
+        assert!(V2_4CandidateBinaryKind::parse("anything").is_err());
     }
 
     #[test]
