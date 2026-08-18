@@ -320,6 +320,12 @@ export function MiningPage({
               <div><span>Templates</span><strong>{telemetry.templatesReceived.toLocaleString()}</strong></div>
               <div><span>Accepted blocks</span><strong className="success-text">{telemetry.submitsAccepted.toLocaleString()}</strong></div>
               <div><span>Rejected submits</span><strong className={telemetry.submitsRejected ? 'warning-text' : ''}>{telemetry.submitsRejected.toLocaleString()}</strong></div>
+              <div><span>Finality unknown</span><strong className={telemetry.submitsFinalityUnknown ? 'warning-text' : ''}>{telemetry.submitsFinalityUnknown.toLocaleString()}</strong></div>
+              <div><span>Reconciled accepted</span><strong className="success-text">{telemetry.submitsReconciledAccepted.toLocaleString()}</strong></div>
+              <div><span>Reconciled rejected</span><strong className={telemetry.submitsReconciledRejected ? 'warning-text' : ''}>{telemetry.submitsReconciledRejected.toLocaleString()}</strong></div>
+              <div><span>Still unknown</span><strong className={telemetry.submitsStillUnknown ? 'warning-text' : ''}>{telemetry.submitsStillUnknown.toLocaleString()}</strong></div>
+              <div><span>Search exhausted</span><strong>{telemetry.searchExhaustions.toLocaleString()}</strong></div>
+              <div><span>Backend verify failures</span><strong className={telemetry.backendVerificationFailures ? 'warning-text' : ''}>{telemetry.backendVerificationFailures.toLocaleString()}</strong></div>
               <div><span>Stale skips</span><strong>{telemetry.templatesSkippedStale.toLocaleString()}</strong></div>
             </div>
             <div className="detail-list compact-details mining-runtime-details">
@@ -328,7 +334,7 @@ export function MiningPage({
               <div><span>Backend</span><strong>{telemetry.backend ?? 'cpu'}</strong></div>
               <div><span>Workers</span><strong>{telemetry.workers ?? draft.minerThreads}</strong></div>
               <div><span>Last event</span><strong>{telemetry.lastEvent ?? '—'}</strong></div>
-              <div><span>Last reject</span><strong>{telemetry.lastRejectCode ?? '—'}</strong></div>
+              <div><span>Last reject / finality</span><strong>{telemetry.lastRejectCode ?? '—'}</strong></div>
               <div><span>Template height</span><strong>{telemetry.lastTemplateHeight ?? '—'}</strong></div>
               <div><span>Accepted height</span><strong>{telemetry.lastAcceptedHeight ?? '—'}</strong></div>
             </div>
