@@ -320,12 +320,12 @@ export function MiningPage({
               <div><span>Templates</span><strong>{telemetry.templatesReceived.toLocaleString()}</strong></div>
               <div><span>Accepted blocks</span><strong className="success-text">{telemetry.submitsAccepted.toLocaleString()}</strong></div>
               <div><span>Rejected submits</span><strong className={telemetry.submitsRejected ? 'warning-text' : ''}>{telemetry.submitsRejected.toLocaleString()}</strong></div>
-              <div><span>Finality unknown</span><strong className={telemetry.submitsFinalityUnknown ? 'warning-text' : ''}>{telemetry.submitsFinalityUnknown.toLocaleString()}</strong></div>
-              <div><span>Reconciled accepted</span><strong className="success-text">{telemetry.submitsReconciledAccepted.toLocaleString()}</strong></div>
-              <div><span>Reconciled rejected</span><strong className={telemetry.submitsReconciledRejected ? 'warning-text' : ''}>{telemetry.submitsReconciledRejected.toLocaleString()}</strong></div>
-              <div><span>Still unknown</span><strong className={telemetry.submitsStillUnknown ? 'warning-text' : ''}>{telemetry.submitsStillUnknown.toLocaleString()}</strong></div>
-              <div><span>Search exhausted</span><strong>{telemetry.searchExhaustions.toLocaleString()}</strong></div>
-              <div><span>Backend verify failures</span><strong className={telemetry.backendVerificationFailures ? 'warning-text' : ''}>{telemetry.backendVerificationFailures.toLocaleString()}</strong></div>
+              <div><span>Finality unknown</span><strong className={(telemetry.submitsFinalityUnknown ?? 0) ? 'warning-text' : ''}>{(telemetry.submitsFinalityUnknown ?? 0).toLocaleString()}</strong></div>
+              <div><span>Reconciled accepted</span><strong className="success-text">{(telemetry.submitsReconciledAccepted ?? 0).toLocaleString()}</strong></div>
+              <div><span>Reconciled rejected</span><strong className={(telemetry.submitsReconciledRejected ?? 0) ? 'warning-text' : ''}>{(telemetry.submitsReconciledRejected ?? 0).toLocaleString()}</strong></div>
+              <div><span>Still unknown</span><strong className={(telemetry.submitsStillUnknown ?? 0) ? 'warning-text' : ''}>{(telemetry.submitsStillUnknown ?? 0).toLocaleString()}</strong></div>
+              <div><span>Search exhausted</span><strong>{(telemetry.searchExhaustions ?? 0).toLocaleString()}</strong></div>
+              <div><span>Backend verify failures</span><strong className={(telemetry.backendVerificationFailures ?? 0) ? 'warning-text' : ''}>{(telemetry.backendVerificationFailures ?? 0).toLocaleString()}</strong></div>
               <div><span>Stale skips</span><strong>{telemetry.templatesSkippedStale.toLocaleString()}</strong></div>
             </div>
             <div className="detail-list compact-details mining-runtime-details">
