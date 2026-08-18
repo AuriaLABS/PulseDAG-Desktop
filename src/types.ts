@@ -80,9 +80,15 @@ export type MinerTelemetry = {
   hashesPerSec: number
   templatesReceived: number
   templatesSkippedStale: number
+  searchExhaustions: number
   submitsTotal: number
   submitsAccepted: number
   submitsRejected: number
+  submitsFinalityUnknown: number
+  submitsReconciledAccepted: number
+  submitsReconciledRejected: number
+  submitsStillUnknown: number
+  backendVerificationFailures: number
   lastRejectCode: string | null
   lastTemplateHeight: number | null
   lastAcceptedHeight: number | null
