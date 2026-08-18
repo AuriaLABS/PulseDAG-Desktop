@@ -5,12 +5,22 @@ mod v2_4_archive_tests {
     use std::io::Write;
     use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
-    fn temp_archive(name: &str) -> PathBuf {
-        env::temp_dir().join(format!(
-            "pulsedag-desktop-v24-{}-{}-{name}",
+    fn temp_archive(label: &str, file_name: &str) -> PathBuf {
+        let directory = env::temp_dir().join(format!(
+            "pulsedag-desktop-v24-{}-{}-{label}",
             std::process::id(),
             unix_time_ms()
-        ))
+        ));
+        fs::create_dir_all(&directory).expect("create candidate fixture directory");
+        directory.join(file_name)
+    }
+
+    fn cleanup_archive(path: &Path) {
+        let parent = path.parent().map(Path::to_path_buf);
+        let _ = fs::remove_file(path);
+        if let Some(parent) = parent {
+            let _ = fs::remove_dir(parent);
+        }
     }
 
     fn append_tar_file<W: Write>(
@@ -93,7 +103,10 @@ mod v2_4_archive_tests {
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
     #[test]
     fn v2_4_candidate_tar_is_inspected_but_never_approved() {
-        let path = temp_archive("node.tar.gz");
+        let path = temp_archive(
+            "node-valid",
+            "pulsedagd-v2.4.0-x86_64-unknown-linux-gnu.tar.gz",
+        );
         write_linux_node_candidate(&path, false);
         let result = inspect_v2_4_candidate_archive_path(&path, V2_4CandidateBinaryKind::Node)
             .expect("valid local v2.4 node candidate");
@@ -105,23 +118,29 @@ mod v2_4_archive_tests {
         assert_eq!(result.embedded_binary_size_bytes, b"node-bytes-v24".len() as u64);
         assert_eq!(result.binary_kind, "node");
         assert!(result.message.contains("not approved release provenance"));
-        let _ = fs::remove_file(path);
+        cleanup_archive(&path);
     }
 
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
     #[test]
     fn v2_4_candidate_tar_rejects_unexpected_file() {
-        let path = temp_archive("node-extra.tar.gz");
+        let path = temp_archive(
+            "node-extra",
+            "pulsedagd-v2.4.0-x86_64-unknown-linux-gnu.tar.gz",
+        );
         write_linux_node_candidate(&path, true);
         let error = inspect_v2_4_candidate_archive_path(&path, V2_4CandidateBinaryKind::Node)
             .expect_err("candidate with extra file must fail");
         assert!(error.contains("unexpected or duplicate file"));
-        let _ = fs::remove_file(path);
+        cleanup_archive(&path);
     }
 
     #[test]
     fn v2_4_candidate_zip_reads_exact_windows_miner_layout() {
-        let path = temp_archive("miner.zip");
+        let path = temp_archive(
+            "miner-valid",
+            "pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip",
+        );
         write_windows_miner_candidate(&path, false);
         let layout = v2_4_candidate_archive_layout(
             "pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip",
@@ -138,12 +157,15 @@ mod v2_4_archive_tests {
         assert_eq!(evidence.target, "x86_64-pc-windows-msvc");
         assert_eq!(evidence.binary_size_bytes, b"miner-bytes-v24".len() as u64);
         assert!(evidence.embedded_path.ends_with("/pulsedag-miner.exe"));
-        let _ = fs::remove_file(path);
+        cleanup_archive(&path);
     }
 
     #[test]
     fn v2_4_candidate_zip_rejects_unexpected_file() {
-        let path = temp_archive("miner-extra.zip");
+        let path = temp_archive(
+            "miner-extra",
+            "pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip",
+        );
         write_windows_miner_candidate(&path, true);
         let layout = v2_4_candidate_archive_layout(
             "pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip",
@@ -158,6 +180,6 @@ mod v2_4_archive_tests {
         )
         .expect_err("candidate ZIP with extra file must fail");
         assert!(error.contains("unexpected or duplicate file"));
-        let _ = fs::remove_file(path);
+        cleanup_archive(&path);
     }
 }
