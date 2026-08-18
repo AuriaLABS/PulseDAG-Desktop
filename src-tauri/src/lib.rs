@@ -1,5 +1,3 @@
-mod v2_4_compat;
-
 include!("parts/foundation.rs");
 include!("parts/verification.rs");
 include!("parts/provenance.rs");
@@ -9,5 +7,6 @@ include!("parts/miner_provenance.rs");
 include!("parts/observability.rs");
 include!("parts/entities.rs");
 include!("parts/diagnostics.rs");
+include!("parts/v2_4_compat.rs");
 #[cfg(test)]
 include!("parts/release_rehearsal.rs");
