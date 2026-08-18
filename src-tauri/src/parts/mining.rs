@@ -27,9 +27,15 @@ struct MinerTelemetrySnapshot {
     hashes_per_sec: f64,
     templates_received: u64,
     templates_skipped_stale: u64,
+    search_exhaustions: u64,
     submits_total: u64,
     submits_accepted: u64,
     submits_rejected: u64,
+    submits_finality_unknown: u64,
+    submits_reconciled_accepted: u64,
+    submits_reconciled_rejected: u64,
+    submits_still_unknown: u64,
+    backend_verification_failures: u64,
     last_reject_code: Option<String>,
     last_template_height: Option<u64>,
     last_accepted_height: Option<u64>,
@@ -210,6 +216,11 @@ fn update_miner_telemetry(line: &str, telemetry: &Arc<Mutex<MinerTelemetrySnapsh
                     snapshot.templates_skipped_stale = value;
                 }
             }
+            "search_exhaustions" => {
+                if let Ok(value) = value.parse() {
+                    snapshot.search_exhaustions = value;
+                }
+            }
             "submits_total" => {
                 if let Ok(value) = value.parse() {
                     snapshot.submits_total = value;
@@ -223,6 +234,31 @@ fn update_miner_telemetry(line: &str, telemetry: &Arc<Mutex<MinerTelemetrySnapsh
             "submits_rejected" => {
                 if let Ok(value) = value.parse() {
                     snapshot.submits_rejected = value;
+                }
+            }
+            "submits_finality_unknown" => {
+                if let Ok(value) = value.parse() {
+                    snapshot.submits_finality_unknown = value;
+                }
+            }
+            "submits_reconciled_accepted" => {
+                if let Ok(value) = value.parse() {
+                    snapshot.submits_reconciled_accepted = value;
+                }
+            }
+            "submits_reconciled_rejected" => {
+                if let Ok(value) = value.parse() {
+                    snapshot.submits_reconciled_rejected = value;
+                }
+            }
+            "submits_still_unknown" => {
+                if let Ok(value) = value.parse() {
+                    snapshot.submits_still_unknown = value;
+                }
+            }
+            "backend_verification_failures" => {
+                if let Ok(value) = value.parse() {
+                    snapshot.backend_verification_failures = value;
                 }
             }
             "last_reject_code" => {
@@ -303,13 +339,20 @@ fn refresh_miner_process_state(
     }
 }
 
-fn validate_miner_text(value: &str, label: &str, maximum: usize, required: bool) -> Result<String, String> {
+fn validate_miner_text(
+    value: &str,
+    label: &str,
+    maximum: usize,
+    required: bool,
+) -> Result<String, String> {
     let trimmed = value.trim();
     if required && trimmed.is_empty() {
         return Err(format!("{label} is required."));
     }
     if trimmed.len() > maximum || trimmed.chars().any(|ch| ch.is_control() || ch.is_whitespace()) {
-        return Err(format!("{label} must be at most {maximum} characters without whitespace."));
+        return Err(format!(
+            "{label} must be at most {maximum} characters without whitespace."
+        ));
     }
     Ok(trimmed.to_string())
 }
@@ -321,7 +364,7 @@ fn miner_command_args(config: &MinerLaunchConfig, node_origin: &str) -> Result<V
     }
     if profile == "private" {
         return Err(
-            "Private-profile mining is blocked until pulsedag-miner is linked to an approved release archive. Use dev or local for this integration milestone."
+            "Private-profile mining requires the verified miner launch path. Link pulsedag-miner to an approved release archive first."
                 .into(),
         );
     }
@@ -371,7 +414,14 @@ fn miner_command_args(config: &MinerLaunchConfig, node_origin: &str) -> Result<V
 
 fn miner_address_label(address: &str) -> String {
     let value = address.trim();
-    let suffix: String = value.chars().rev().take(8).collect::<String>().chars().rev().collect();
+    let suffix: String = value
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
     if value.len() > suffix.len() {
         format!("…{suffix}")
     } else {
@@ -479,7 +529,10 @@ fn start_miner(
     thread::sleep(Duration::from_millis(150));
     refresh_miner_process_state(&state, &mut managed);
     if managed.child.is_none() {
-        return Err("pulsedag-miner exited immediately. Open the Mining log for the startup error.".into());
+        return Err(
+            "pulsedag-miner exited immediately. Open the Mining log for the startup error."
+                .into(),
+        );
     }
 
     Ok(miner_runtime_status(&managed, &state.telemetry))
@@ -601,8 +654,31 @@ mod miner_tests {
         assert_eq!(snapshot.workers, Some(4));
         assert_eq!(snapshot.attempts, 1_200);
         assert_eq!(snapshot.submits_accepted, 1);
+        assert_eq!(snapshot.submits_finality_unknown, 0);
         assert_eq!(snapshot.last_accepted_height, Some(19));
         assert!(snapshot.updated_at_ms.is_some());
+    }
+
+    #[test]
+    fn miner_v2_4_finality_telemetry_is_parsed_without_counting_unknown_as_rejected() {
+        let telemetry = Arc::new(Mutex::new(MinerTelemetrySnapshot::default()));
+        update_miner_telemetry(
+            "miner_telemetry event=submit_finality_unknown backend=cpu workers=8 attempts=50000 hashes_per_sec=12345.67 templates_received=9 templates_skipped_stale=2 search_exhaustions=4 submits_total=7 submits_accepted=2 submits_rejected=1 submits_finality_unknown=4 submits_reconciled_accepted=1 submits_reconciled_rejected=1 submits_still_unknown=2 backend_verification_failures=3 last_reject_code=submit_finality_still_unknown last_template_height=55 last_accepted_height=54",
+            &telemetry,
+        );
+        let snapshot = telemetry.lock().unwrap().clone();
+        assert_eq!(snapshot.search_exhaustions, 4);
+        assert_eq!(snapshot.submits_total, 7);
+        assert_eq!(snapshot.submits_rejected, 1);
+        assert_eq!(snapshot.submits_finality_unknown, 4);
+        assert_eq!(snapshot.submits_reconciled_accepted, 1);
+        assert_eq!(snapshot.submits_reconciled_rejected, 1);
+        assert_eq!(snapshot.submits_still_unknown, 2);
+        assert_eq!(snapshot.backend_verification_failures, 3);
+        assert_eq!(
+            snapshot.last_reject_code.as_deref(),
+            Some("submit_finality_still_unknown")
+        );
     }
 
     #[test]
@@ -630,7 +706,10 @@ mod miner_tests {
 
     #[test]
     fn miner_address_log_label_is_redacted() {
-        assert_eq!(miner_address_label("pulsedag:abcdefgh12345678"), "…12345678");
+        assert_eq!(
+            miner_address_label("pulsedag:abcdefgh12345678"),
+            "…12345678"
+        );
         assert_eq!(miner_address_label("short"), "short");
     }
 }
