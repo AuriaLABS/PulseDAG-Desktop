@@ -255,6 +255,7 @@ pub fn run() {
             discover_node_binary,
             validate_node_binary,
             verify_approved_release_archive,
+            inspect_v2_4_candidate_archive,
             bind_binary_to_verified_archive,
             get_binary_provenance,
             get_node_status,
