@@ -1,6 +1,7 @@
 pub(crate) const V2_4_CANDIDATE_TAG: &str = "v2.4.0";
-pub(crate) const V2_4_CANDIDATE_COMMIT: &str =
+pub(crate) const V2_4_STALE_RELEASE_PREP_COMMIT: &str =
     "995b7b200afc90f705eece6c37a16b7a4fc294ec";
+pub(crate) const V2_4_FINAL_RELEASE_COMMIT: Option<&str> = None;
 pub(crate) const V2_4_RELEASE_API: &str =
     "https://api.github.com/repos/AuriaLABS/PulseDAG/releases/tags/v2.4.0";
 pub(crate) const V2_4_PRIVATE_NETWORK_PROFILE: &str = "private-testnet-v2.4.0";
@@ -66,7 +67,10 @@ pub(crate) fn v2_4_private_identity() -> (&'static str, &'static str) {
 }
 
 pub(crate) fn is_approved_v2_4_provenance(proof: &TrustedBinaryProvenance) -> bool {
-    proof.release_tag == V2_4_CANDIDATE_TAG && proof.source_commit == V2_4_CANDIDATE_COMMIT
+    let Some(final_release_commit) = V2_4_FINAL_RELEASE_COMMIT else {
+        return false;
+    };
+    proof.release_tag == V2_4_CANDIDATE_TAG && proof.source_commit == final_release_commit
 }
 
 pub(crate) fn v2_4_private_state_marker_contents() -> String {
@@ -205,14 +209,14 @@ fn inspect_v2_4_candidate_archive_path(
         archive_size_bytes,
         binary_kind: binary_kind.public_name().to_string(),
         release_tag: V2_4_CANDIDATE_TAG.to_string(),
-        source_commit: V2_4_CANDIDATE_COMMIT.to_string(),
+        source_commit: V2_4_FINAL_RELEASE_COMMIT.unwrap_or("unfrozen").to_string(),
         target: evidence.target,
         embedded_path: evidence.embedded_path,
         embedded_binary_sha256: evidence.binary_sha256,
         embedded_binary_size_bytes: evidence.binary_size_bytes,
         structurally_valid: true,
         approved: false,
-        message: "The archive matches the local PulseDAG v2.4.0 candidate layout and safety bounds, but it is not approved release provenance. Publication digest/provenance verification is still required before private launch."
+        message: "The archive matches the local PulseDAG v2.4.0 candidate layout and safety bounds, but Task31 has not frozen a final release SHA. This evidence is structural only and cannot become trusted provenance or authorize private launch."
             .into(),
     })
 }
@@ -246,12 +250,13 @@ mod tests {
     }
 
     #[test]
-    fn v2_4_candidate_identity_is_exact() {
+    fn v2_4_candidate_identity_is_unfrozen_and_fail_closed() {
         assert_eq!(V2_4_CANDIDATE_TAG, "v2.4.0");
         assert_eq!(
-            V2_4_CANDIDATE_COMMIT,
+            V2_4_STALE_RELEASE_PREP_COMMIT,
             "995b7b200afc90f705eece6c37a16b7a4fc294ec"
         );
+        assert!(V2_4_FINAL_RELEASE_COMMIT.is_none());
         assert_eq!(
             v2_4_private_identity(),
             ("private-testnet-v2.4.0", "pulsedag-private-v2.4.0")
@@ -344,14 +349,18 @@ mod tests {
     }
 
     #[test]
-    fn v2_4_private_identity_activates_only_for_exact_approved_provenance() {
-        assert!(is_approved_v2_4_provenance(&proof(
+    fn v2_4_private_identity_rejects_all_provenance_until_task31_freeze() {
+        assert!(!is_approved_v2_4_provenance(&proof(
             V2_4_CANDIDATE_TAG,
-            V2_4_CANDIDATE_COMMIT
+            V2_4_STALE_RELEASE_PREP_COMMIT
         )));
         assert!(!is_approved_v2_4_provenance(&proof(
             "v2.3.0",
             "7e43225f01ac05d15e5f1e3f1550d7850bf18cbc"
+        )));
+        assert!(!is_approved_v2_4_provenance(&proof(
+            V2_4_CANDIDATE_TAG,
+            "91dd8f4314cd0a0672cf3c98f00eea039e59e429"
         )));
         assert!(!is_approved_v2_4_provenance(&proof(
             V2_4_CANDIDATE_TAG,
