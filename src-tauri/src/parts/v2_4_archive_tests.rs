@@ -113,11 +113,11 @@ mod v2_4_archive_tests {
         assert!(result.structurally_valid);
         assert!(!result.approved);
         assert_eq!(result.release_tag, V2_4_CANDIDATE_TAG);
-        assert_eq!(result.source_commit, V2_4_CANDIDATE_COMMIT);
+        assert_eq!(result.source_commit, "unfrozen");
         assert_eq!(result.target, "x86_64-unknown-linux-gnu");
         assert_eq!(result.embedded_binary_size_bytes, b"node-bytes-v24".len() as u64);
         assert_eq!(result.binary_kind, "node");
-        assert!(result.message.contains("not approved release provenance"));
+        assert!(result.message.contains("cannot become trusted provenance"));
         cleanup_archive(&path);
     }
 
