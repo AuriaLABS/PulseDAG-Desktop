@@ -11,4 +11,6 @@ include!("parts/v2_4_compat.rs");
 #[cfg(test)]
 include!("parts/v2_4_archive_tests.rs");
 #[cfg(test)]
+include!("parts/v2_4_task31_tests.rs");
+#[cfg(test)]
 include!("parts/release_rehearsal.rs");
