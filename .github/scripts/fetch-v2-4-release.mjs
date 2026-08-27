@@ -11,7 +11,7 @@ const SOURCE_COMMIT = '876b48826a3875b729888edb88e2b0eea15bb717'
 const SOURCE_BUILD_RUN_ID = '33070288236'
 const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 const MAX_METADATA_BYTES = 2 * 1024 * 1024
-const PACKAGED_INSTALL_GUIDE = 'INSTALL_BINARIES_V2_3_0.md'
+const PACKAGED_RELEASE_NOTE = 'V2_4_0_KNOWN_LIMITATIONS.md'
 
 const APPROVED_ASSETS = new Map([
   ['pulsedagd-v2.4.0-x86_64-unknown-linux-gnu.tar.gz', {
@@ -119,7 +119,7 @@ function validateManifest(manifest, archiveName, archiveSize) {
   const approved = APPROVED_ASSETS.get(archiveName)
   if (!approved) throw new Error(`Manifest names unapproved archive ${archiveName}`)
   const included = new Set(manifest.included_files ?? [])
-  const expectedIncluded = new Set(['README.md', PACKAGED_INSTALL_GUIDE])
+  const expectedIncluded = new Set(['README.md', PACKAGED_RELEASE_NOTE])
   const includedMatches = included.size === expectedIncluded.size && [...included].every((value) => expectedIncluded.has(value))
   if (
     manifest.tag !== RELEASE_TAG
@@ -166,8 +166,14 @@ function validateConsolidatedChecksums(text) {
 }
 
 function validateProvenanceSummary(summary, release) {
-  if (summary.release_tag !== RELEASE_TAG || summary.native_smoke_verified !== true || !Array.isArray(summary.artifacts) || summary.artifacts.length !== 6) {
-    throw new Error('release-provenance.json is incomplete or not native-smoke verified')
+  if (
+    summary.release_tag !== RELEASE_TAG
+    || summary.source_sha !== SOURCE_COMMIT
+    || summary.native_smoke_verified !== true
+    || !Array.isArray(summary.artifacts)
+    || summary.artifacts.length !== 6
+  ) {
+    throw new Error('release-provenance.json is incomplete, source-mismatched or not native-smoke verified')
   }
   const seen = new Set()
   for (const manifest of summary.artifacts) {
@@ -274,8 +280,8 @@ async function main() {
   const provenance = JSON.parse(provenanceText)
   validateProvenanceSummary(provenance, release)
 
-  // Presence is part of the exact 21-file allowlist. The archive itself retains
-  // INSTALL_BINARIES_V2_3_0.md; INSTALL-VERIFY.md is the release-level guide.
+  // INSTALL-VERIFY.md is a release-level guide. Each final archive contains
+  // README.md plus V2_4_0_KNOWN_LIMITATIONS.md, exactly as Task31 built it.
   releaseAsset(release, 'INSTALL-VERIFY.md')
 
   const archivePath = join(outputDirectory, assetName)
