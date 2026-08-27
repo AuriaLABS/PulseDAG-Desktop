@@ -8,6 +8,7 @@ include!("parts/observability.rs");
 include!("parts/entities.rs");
 include!("parts/diagnostics.rs");
 include!("parts/v2_4_compat.rs");
+include!("parts/v2_4_release.rs");
 #[cfg(test)]
 include!("parts/v2_4_archive_tests.rs");
 #[cfg(test)]
