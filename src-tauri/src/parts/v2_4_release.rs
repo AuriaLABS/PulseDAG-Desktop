@@ -1,15 +1,13 @@
 pub(crate) const V2_4_FINAL_RELEASE_TAG: &str = "v2.4.0";
 pub(crate) const V2_4_FINAL_RELEASE_SOURCE_COMMIT: &str =
     "876b48826a3875b729888edb88e2b0eea15bb717";
+pub(crate) const V2_4_FINAL_RELEASE_SOURCE_TREE: &str =
+    "f41f65bc5c5da3a44903b84f0e0f7186df2b64a8";
 pub(crate) const V2_4_FINAL_RELEASE_API: &str =
     "https://api.github.com/repos/AuriaLABS/PulseDAG/releases/tags/v2.4.0";
 pub(crate) const V2_4_FINAL_RELEASE_REPOSITORY: &str = "AuriaLABS/PulseDAG";
 pub(crate) const V2_4_FINAL_RELEASE_BUILD_RUN_ID: &str = "33070288236";
-
-// The frozen v2.4.0 release workflow intentionally retained the historical
-// install-document filename inside each archive. Trust the published bytes,
-// not the provisional Desktop candidate assumption.
-pub(crate) const V2_4_PACKAGED_INSTALL_GUIDE: &str = "INSTALL_BINARIES_V2_3_0.md";
+pub(crate) const V2_4_PACKAGED_RELEASE_NOTE: &str = "V2_4_0_KNOWN_LIMITATIONS.md";
 
 const V2_4_FINAL_METADATA_BYTES: u64 = 2 * 1024 * 1024;
 
@@ -67,6 +65,8 @@ struct V2_4ReleaseManifest {
 #[derive(Debug, Deserialize)]
 struct V2_4ReleaseProvenanceSummary {
     release_tag: String,
+    source_sha: String,
+    source_tree: String,
     artifacts: Vec<V2_4ReleaseManifest>,
     native_smoke_verified: bool,
 }
@@ -168,7 +168,7 @@ fn v2_4_final_archive_layout(
     let allowed_files = [
         binary_path.clone(),
         root.join("README.md"),
-        root.join(V2_4_PACKAGED_INSTALL_GUIDE),
+        root.join(V2_4_PACKAGED_RELEASE_NOTE),
     ]
     .into_iter()
     .collect();
@@ -303,7 +303,10 @@ async fn download_v2_4_release_text(
             asset.name
         ));
     }
-    if response.content_length().is_some_and(|length| length > V2_4_FINAL_METADATA_BYTES) {
+    if response
+        .content_length()
+        .is_some_and(|length| length > V2_4_FINAL_METADATA_BYTES)
+    {
         return Err(format!("The published metadata asset {} is too large.", asset.name));
     }
     let bytes = response
@@ -348,7 +351,7 @@ fn validate_v2_4_manifest(
         .iter()
         .cloned()
         .collect::<std::collections::HashSet<_>>();
-    let expected_included = ["README.md".to_string(), V2_4_PACKAGED_INSTALL_GUIDE.to_string()]
+    let expected_included = ["README.md".to_string(), V2_4_PACKAGED_RELEASE_NOTE.to_string()]
         .into_iter()
         .collect::<std::collections::HashSet<_>>();
 
@@ -431,10 +434,12 @@ fn validate_v2_4_provenance_summary(
     release: &V2_4GitHubRelease,
 ) -> Result<(), String> {
     if summary.release_tag != V2_4_FINAL_RELEASE_TAG
+        || summary.source_sha != V2_4_FINAL_RELEASE_SOURCE_COMMIT
+        || summary.source_tree != V2_4_FINAL_RELEASE_SOURCE_TREE
         || !summary.native_smoke_verified
         || summary.artifacts.len() != 6
     {
-        return Err("The consolidated v2.4.0 provenance summary is incomplete or not smoke-verified.".into());
+        return Err("The consolidated v2.4.0 provenance summary is source-mismatched, incomplete or not smoke-verified.".into());
     }
     let mut seen = std::collections::HashSet::new();
     for manifest in &summary.artifacts {
@@ -476,8 +481,7 @@ pub(crate) fn is_final_v2_4_release_provenance(proof: &TrustedBinaryProvenance) 
     let Ok(layout) = v2_4_final_archive_layout(&proof.archive_name, kind) else {
         return false;
     };
-    proof.target == layout.target
-        && proof.embedded_path == layout.binary_path.display().to_string()
+    proof.target == layout.target && proof.embedded_path == layout.binary_path.display().to_string()
 }
 
 #[tauri::command]
@@ -595,7 +599,11 @@ async fn verify_v2_4_release_archive(
 mod v2_4_final_release_tests {
     use super::*;
 
-    fn proof(archive_name: &str, archive_sha256: &str, source_commit: &str) -> TrustedBinaryProvenance {
+    fn proof(
+        archive_name: &str,
+        archive_sha256: &str,
+        source_commit: &str,
+    ) -> TrustedBinaryProvenance {
         let kind = if archive_name.starts_with("pulsedagd-") {
             V2_4CandidateBinaryKind::Node
         } else {
@@ -628,17 +636,17 @@ mod v2_4_final_release_tests {
     }
 
     #[test]
-    fn v2_4_final_layout_matches_frozen_published_archive_contents() {
+    fn v2_4_final_layout_matches_exact_release_contents() {
         let node = v2_4_final_archive_layout(
             "pulsedagd-v2.4.0-x86_64-pc-windows-msvc.zip",
             V2_4CandidateBinaryKind::Node,
         )
         .unwrap();
         assert!(node.allowed_files.contains(&PathBuf::from(
-            "pulsedagd-v2.4.0-x86_64-pc-windows-msvc/INSTALL_BINARIES_V2_3_0.md"
+            "pulsedagd-v2.4.0-x86_64-pc-windows-msvc/V2_4_0_KNOWN_LIMITATIONS.md"
         )));
         assert!(!node.allowed_files.contains(&PathBuf::from(
-            "pulsedagd-v2.4.0-x86_64-pc-windows-msvc/INSTALL_BINARIES_V2_4_0.md"
+            "pulsedagd-v2.4.0-x86_64-pc-windows-msvc/INSTALL_BINARIES_V2_3_0.md"
         )));
         assert_eq!(node.allowed_files.len(), 3);
     }
@@ -675,7 +683,7 @@ mod v2_4_final_release_tests {
             archive_size_bytes: 123,
             target: "x86_64-pc-windows-msvc".into(),
             binary: "pulsedagd.exe".into(),
-            included_files: vec!["README.md".into(), V2_4_PACKAGED_INSTALL_GUIDE.into()],
+            included_files: vec!["README.md".into(), V2_4_PACKAGED_RELEASE_NOTE.into()],
             provenance: V2_4ManifestProvenance {
                 repository: V2_4_FINAL_RELEASE_REPOSITORY.into(),
                 commit: V2_4_FINAL_RELEASE_SOURCE_COMMIT.into(),
