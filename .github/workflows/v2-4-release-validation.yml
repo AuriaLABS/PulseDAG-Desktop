@@ -112,21 +112,21 @@ jobs:
 
       - name: Run v2.4 compatibility and final-release unit gates
         run: >-
-          cargo test --locked
+          cargo test
           --manifest-path src-tauri/Cargo.toml
           v2_4_
           -- --nocapture
 
       - name: Rehearse final node archive provenance
         run: >-
-          cargo test --locked
+          cargo test
           --manifest-path src-tauri/Cargo.toml
           v2_4_final_node_release_rehearsal
           -- --ignored --nocapture
 
       - name: Rehearse final miner archive provenance
         run: >-
-          cargo test --locked
+          cargo test
           --manifest-path src-tauri/Cargo.toml
           v2_4_final_miner_release_rehearsal
           -- --ignored --nocapture
