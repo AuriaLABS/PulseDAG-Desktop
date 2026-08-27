@@ -1,0 +1,159 @@
+name: v2.4 Final Release Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/scripts/fetch-v2-4-release.mjs"
+      - ".github/workflows/v2-4-release-validation.yml"
+      - "src-tauri/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/fetch-v2-4-release.mjs"
+      - ".github/workflows/v2-4-release-validation.yml"
+      - "src-tauri/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-4-final-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x86_64 final release
+            os: ubuntu-24.04
+            node_asset: pulsedagd-v2.4.0-x86_64-unknown-linux-gnu.tar.gz
+            miner_asset: pulsedag-miner-v2.4.0-x86_64-unknown-linux-gnu.tar.gz
+          - label: Windows x86_64 final release
+            os: windows-2022
+            node_asset: pulsedagd-v2.4.0-x86_64-pc-windows-msvc.zip
+            miner_asset: pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Verify and download final v2.4 node release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node .github/scripts/fetch-v2-4-release.mjs
+          --asset "${{ matrix.node_asset }}"
+          --output "${{ runner.temp }}/pulsedag-v24-node"
+
+      - name: Verify and download final v2.4 miner release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node .github/scripts/fetch-v2-4-release.mjs
+          --asset "${{ matrix.miner_asset }}"
+          --output "${{ runner.temp }}/pulsedag-v24-miner"
+
+      - name: Extract final Linux node and miner
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node_extract="$RUNNER_TEMP/pulsedag-v24-node/extracted"
+          miner_extract="$RUNNER_TEMP/pulsedag-v24-miner/extracted"
+          mkdir -p "$node_extract" "$miner_extract"
+          tar -xzf "$PULSEDAG_V24_NODE_ARCHIVE" -C "$node_extract"
+          tar -xzf "$PULSEDAG_V24_MINER_ARCHIVE" -C "$miner_extract"
+          node_binary="$node_extract/$PULSEDAG_V24_NODE_ARCHIVE_ROOT/$PULSEDAG_V24_NODE_BINARY_NAME"
+          miner_binary="$miner_extract/$PULSEDAG_V24_MINER_ARCHIVE_ROOT/$PULSEDAG_V24_MINER_BINARY_NAME"
+          test -f "$node_binary"
+          test -f "$miner_binary"
+          chmod +x "$node_binary" "$miner_binary"
+          echo "PULSEDAG_V24_NODE_BINARY=$node_binary" >> "$GITHUB_ENV"
+          echo "PULSEDAG_V24_MINER_BINARY=$miner_binary" >> "$GITHUB_ENV"
+
+      - name: Extract final Windows node and miner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $nodeExtract = Join-Path $env:RUNNER_TEMP "pulsedag-v24-node\extracted"
+          $minerExtract = Join-Path $env:RUNNER_TEMP "pulsedag-v24-miner\extracted"
+          New-Item -ItemType Directory -Force -Path $nodeExtract | Out-Null
+          New-Item -ItemType Directory -Force -Path $minerExtract | Out-Null
+          Expand-Archive -LiteralPath $env:PULSEDAG_V24_NODE_ARCHIVE -DestinationPath $nodeExtract
+          Expand-Archive -LiteralPath $env:PULSEDAG_V24_MINER_ARCHIVE -DestinationPath $minerExtract
+          $nodeBinary = Join-Path $nodeExtract "$env:PULSEDAG_V24_NODE_ARCHIVE_ROOT\$env:PULSEDAG_V24_NODE_BINARY_NAME"
+          $minerBinary = Join-Path $minerExtract "$env:PULSEDAG_V24_MINER_ARCHIVE_ROOT\$env:PULSEDAG_V24_MINER_BINARY_NAME"
+          if (-not (Test-Path -LiteralPath $nodeBinary -PathType Leaf)) { throw "Missing final pulsedagd binary" }
+          if (-not (Test-Path -LiteralPath $minerBinary -PathType Leaf)) { throw "Missing final pulsedag-miner binary" }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_V24_NODE_BINARY=$nodeBinary"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_V24_MINER_BINARY=$minerBinary"
+
+      - name: Run v2.4 compatibility and final-release unit gates
+        run: >-
+          cargo test --locked
+          --manifest-path src-tauri/Cargo.toml
+          v2_4_
+          -- --nocapture
+
+      - name: Rehearse final node archive provenance
+        run: >-
+          cargo test --locked
+          --manifest-path src-tauri/Cargo.toml
+          v2_4_final_node_release_rehearsal
+          -- --ignored --nocapture
+
+      - name: Rehearse final miner archive provenance
+        run: >-
+          cargo test --locked
+          --manifest-path src-tauri/Cargo.toml
+          v2_4_final_miner_release_rehearsal
+          -- --ignored --nocapture
+
+      - name: Smoke final Linux binaries without starting a network
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PULSEDAG_V24_NODE_BINARY" --version
+          "$PULSEDAG_V24_MINER_BINARY" --help >/dev/null
+
+      - name: Smoke final Windows binaries without starting a network
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & $env:PULSEDAG_V24_NODE_BINARY --version
+          if ($LASTEXITCODE -ne 0) { throw "pulsedagd --version failed" }
+          & $env:PULSEDAG_V24_MINER_BINARY --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "pulsedag-miner --help failed" }
+
+      - name: Upload final-release verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-4-final-release-${{ matrix.os }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/pulsedag-v24-node/v24-node-release-evidence.json
+            ${{ runner.temp }}/pulsedag-v24-miner/v24-miner-release-evidence.json
