@@ -156,7 +156,12 @@ mod v2_4_archive_tests {
         .expect("inspect candidate zip");
         assert_eq!(evidence.target, "x86_64-pc-windows-msvc");
         assert_eq!(evidence.binary_size_bytes, b"miner-bytes-v24".len() as u64);
-        assert!(evidence.embedded_path.ends_with("/pulsedag-miner.exe"));
+        assert_eq!(
+            Path::new(&evidence.embedded_path)
+                .file_name()
+                .and_then(|value| value.to_str()),
+            Some("pulsedag-miner.exe")
+        );
         cleanup_archive(&path);
     }
 
