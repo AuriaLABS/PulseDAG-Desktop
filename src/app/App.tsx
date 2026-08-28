@@ -31,6 +31,11 @@ import {
   validateNodeBinary,
   verifyApprovedReleaseArchive,
 } from '../lib/desktop'
+import {
+  bindV24NodeBinaryToVerifiedArchive,
+  selectV24ReleaseArchive,
+  verifyV24ReleaseArchive,
+} from '../lib/v24'
 import { LiveDagPage } from '../pages/LiveDagPage'
 import { LogsPage } from '../pages/LogsPage'
 import { MiningPage } from '../pages/MiningPage'
@@ -53,6 +58,8 @@ import type {
   ReleaseVerification,
   RpcHealth,
 } from '../types'
+
+const V24_FINAL_SOURCE = '876b48826a3875b729888edb88e2b0eea15bb717'
 
 const sectionTitles: Record<AppSection, { eyebrow: string; title: string }> = {
   overview: { eyebrow: 'PulseDAG operator workspace', title: 'Overview' },
@@ -248,7 +255,7 @@ export function App() {
     try {
       const info = await validateNodeBinary(path)
       setBinaryInfo(info)
-      if (binaryProvenance && !binaryProvenance.selectedBinarySha256.toLowerCase().startsWith(info.sha256.toLowerCase())) {
+      if (binaryProvenance && binaryProvenance.selectedBinarySha256.toLowerCase() !== info.sha256.toLowerCase()) {
         setBinaryProvenance(null)
       }
       setOperationError('')
@@ -346,12 +353,18 @@ export function App() {
     }
   }
 
-  async function handleVerifyRelease(): Promise<ReleaseVerification | null> {
+  async function handleVerifyRelease(
+    profile: NodePreferences['configProfile'] = preferences.configProfile,
+  ): Promise<ReleaseVerification | null> {
     try {
       setOperationError('')
-      const path = await selectReleaseArchive()
+      const path = profile === 'private'
+        ? await selectV24ReleaseArchive('node')
+        : await selectReleaseArchive()
       if (!path) return null
-      const verification = await verifyApprovedReleaseArchive(path)
+      const verification = profile === 'private'
+        ? await verifyV24ReleaseArchive(path, 'node')
+        : await verifyApprovedReleaseArchive(path)
       setReleaseVerification(verification)
       setBinaryProvenance(null)
       setOperationError(verification.approved ? '' : verification.message)
@@ -364,17 +377,38 @@ export function App() {
     }
   }
 
-  async function handleBindProvenance(executablePath: string): Promise<BinaryProvenance | null> {
+  async function handleBindProvenance(
+    executablePath: string,
+    profile: NodePreferences['configProfile'] = preferences.configProfile,
+  ): Promise<BinaryProvenance | null> {
     if (!releaseVerification?.approved) {
-      setOperationError('Verify an approved release archive before linking the executable.')
+      setOperationError('Verify the release archive for the selected profile before linking the executable.')
+      return null
+    }
+    const releaseMatchesProfile = profile === 'private'
+      ? releaseVerification.releaseTag === 'v2.4.0'
+        && releaseVerification.sourceCommit === V24_FINAL_SOURCE
+        && releaseVerification.archiveName.startsWith('pulsedagd-v2.4.0-')
+      : releaseVerification.releaseTag === 'v2.3.0'
+    if (!releaseMatchesProfile) {
+      setOperationError(
+        profile === 'private'
+          ? 'Private mode requires the final PulseDAG v2.4.0 Task31 node archive.'
+          : 'Development/local linking uses the approved PulseDAG v2.3.0 archive path.',
+      )
       return null
     }
     try {
       setOperationError('')
-      const proof = await bindBinaryToVerifiedArchive(
-        releaseVerification.archivePath,
-        executablePath,
-      )
+      const proof = profile === 'private'
+        ? await bindV24NodeBinaryToVerifiedArchive(
+            releaseVerification.archivePath,
+            executablePath,
+          )
+        : await bindBinaryToVerifiedArchive(
+            releaseVerification.archivePath,
+            executablePath,
+          )
       setBinaryProvenance(proof.approved ? proof : null)
       setOperationError(proof.approved ? '' : proof.message)
       return proof
@@ -389,6 +423,7 @@ export function App() {
     const pathChanged = next.executablePath !== preferences.executablePath
     const minerPathChanged = next.minerExecutablePath !== preferences.minerExecutablePath
     const endpointChanged = next.rpcEndpoint !== preferences.rpcEndpoint
+    const profileChanged = next.configProfile !== preferences.configProfile
     saveNodePreferences(next)
     setPreferences(next)
     if (pathChanged) {
@@ -397,6 +432,10 @@ export function App() {
     }
     if (minerPathChanged) {
       setMinerBinaryInfo(null)
+    }
+    if (profileChanged) {
+      setReleaseVerification(null)
+      setBinaryProvenance(null)
     }
     if (endpointChanged) {
       setObservability(null)
