@@ -59,6 +59,12 @@ jobs:
             patchelf \
             xdg-utils
 
+      - name: Install desktop dependencies
+        run: npm install
+
+      - name: Generate Tauri icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+
       - name: Verify and download final v2.4 node release
         env:
           GITHUB_TOKEN: ${{ github.token }}
