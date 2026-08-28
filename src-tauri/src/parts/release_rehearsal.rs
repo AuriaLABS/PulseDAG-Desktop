@@ -9,17 +9,17 @@ mod official_release_rehearsal_tests {
     }
 
     #[test]
-    #[ignore = "requires the official PulseDAG v2.3.0 node archive and extracted binary"]
-    fn provenance_official_release_rehearsal() {
+    #[ignore = "requires the legacy official PulseDAG v2.3.0 node archive and extracted binary"]
+    fn legacy_v2_3_node_provenance_rehearsal() {
         let archive_path = required_path("PULSEDAG_PROVENANCE_ARCHIVE");
         let binary_path = required_path("PULSEDAG_PROVENANCE_BINARY");
         let expected_archive_sha256 = env::var("PULSEDAG_PROVENANCE_ARCHIVE_SHA256")
             .expect("PULSEDAG_PROVENANCE_ARCHIVE_SHA256 must be set");
 
         let embedded = inspect_embedded_binary(&archive_path)
-            .expect("inspect the official release archive");
+            .expect("inspect the legacy official release archive");
         let selected = validate_binary_path(&binary_path)
-            .expect("validate the extracted official pulsedagd binary");
+            .expect("validate the extracted legacy official pulsedagd binary");
 
         assert_eq!(
             embedded.target,
@@ -43,7 +43,7 @@ mod official_release_rehearsal_tests {
         let supervisor = NodeSupervisor::default();
         assert!(
             verify_binary_provenance_for_launch(&supervisor, &selected, "private").is_err(),
-            "private launch admission must fail before provenance is installed"
+            "the generic binding check must fail before provenance is installed"
         );
 
         let archive_name = archive_path
@@ -67,27 +67,27 @@ mod official_release_rehearsal_tests {
             linked_at_ms: unix_time_ms(),
         });
 
-        let admitted = verify_binary_provenance_for_launch(
-            &supervisor,
-            &selected,
-            "private",
-        )
-        .expect("private launch admission with current provenance");
-        assert!(admitted.is_some(), "private profile must accept the official binary");
+        let linked = verify_binary_provenance_for_launch(&supervisor, &selected, "private")
+            .expect("legacy proof remains internally linkable")
+            .expect("installed legacy proof");
+        assert!(
+            !is_final_v2_4_node_provenance(&linked),
+            "a v2.3 node proof must never satisfy the final v2.4 private launch gate"
+        );
     }
 
     #[test]
-    #[ignore = "requires the official PulseDAG v2.3.0 miner archive and extracted binary"]
-    fn miner_provenance_official_release_rehearsal() {
+    #[ignore = "requires the legacy official PulseDAG v2.3.0 miner archive and extracted binary"]
+    fn legacy_v2_3_miner_provenance_rehearsal() {
         let archive_path = required_path("PULSEDAG_MINER_PROVENANCE_ARCHIVE");
         let binary_path = required_path("PULSEDAG_MINER_PROVENANCE_BINARY");
         let expected_archive_sha256 = env::var("PULSEDAG_MINER_PROVENANCE_ARCHIVE_SHA256")
             .expect("PULSEDAG_MINER_PROVENANCE_ARCHIVE_SHA256 must be set");
 
         let embedded = inspect_embedded_miner_binary(&archive_path)
-            .expect("inspect the official miner release archive");
+            .expect("inspect the legacy official miner release archive");
         let selected = validate_miner_binary_path(&binary_path)
-            .expect("validate the extracted official pulsedag-miner binary");
+            .expect("validate the extracted legacy official pulsedag-miner binary");
 
         assert_eq!(
             embedded.target,
@@ -135,8 +135,19 @@ mod official_release_rehearsal_tests {
             linked_at_ms: unix_time_ms(),
         });
 
-        let admitted = verify_miner_provenance_for_launch(&registry, &selected, "private")
-            .expect("private miner launch admission with current provenance");
-        assert!(admitted.is_some(), "private profile must accept the official miner");
+        let linked = registry
+            .provenance
+            .lock()
+            .expect("miner provenance state")
+            .clone()
+            .expect("installed legacy miner proof");
+        assert!(
+            !is_final_v2_4_miner_provenance(&linked),
+            "a v2.3 miner proof must never satisfy the final v2.4 private mining gate"
+        );
+        assert!(
+            verify_miner_provenance_for_launch(&registry, &selected, "private").is_err(),
+            "private mining must continue rejecting an installed v2.3 proof"
+        );
     }
 }
