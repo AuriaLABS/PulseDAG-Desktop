@@ -120,6 +120,8 @@ jobs:
           node_log="$RUNNER_TEMP/v24-private-node.log"
           miner_log="$RUNNER_TEMP/v24-private-miner.log"
           health_file="$RUNNER_TEMP/v24-private-health.txt"
+          node_binary="$PULSEDAG_V24_NODE_BINARY"
+          miner_binary="$PULSEDAG_V24_MINER_BINARY"
           rm -rf "$state_dir"
           mkdir -p "$state_dir"
 
@@ -169,7 +171,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          "$PULSEDAG_V24_NODE_BINARY" >"$node_log" 2>&1 &
+          "$node_binary" >"$node_log" 2>&1 &
           node_pid=$!
 
           healthy=false
@@ -191,7 +193,7 @@ jobs:
             exit 1
           fi
 
-          "$PULSEDAG_V24_MINER_BINARY" \
+          "$miner_binary" \
             --node http://127.0.0.1:8280 \
             --miner-address test \
             --backend cpu \
@@ -236,6 +238,8 @@ jobs:
           $minerLog = Join-Path $env:RUNNER_TEMP "v24-private-miner.log"
           $minerErr = Join-Path $env:RUNNER_TEMP "v24-private-miner.err.log"
           $healthFile = Join-Path $env:RUNNER_TEMP "v24-private-health.txt"
+          $nodeBinary = $env:PULSEDAG_V24_NODE_BINARY
+          $minerBinary = $env:PULSEDAG_V24_MINER_BINARY
           Remove-Item -LiteralPath $stateDir -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 
@@ -271,7 +275,7 @@ jobs:
           $nodeProcess = $null
           $minerProcess = $null
           try {
-            $nodeProcess = Start-Process -FilePath $env:PULSEDAG_V24_NODE_BINARY -NoNewWindow -PassThru -RedirectStandardOutput $nodeLog -RedirectStandardError $nodeErr
+            $nodeProcess = Start-Process -FilePath $nodeBinary -NoNewWindow -PassThru -RedirectStandardOutput $nodeLog -RedirectStandardError $nodeErr
             $healthy = $false
             for ($i = 0; $i -lt 45; $i++) {
               $nodeProcess.Refresh()
@@ -303,7 +307,7 @@ jobs:
               "--worker-id", "desktop-ci-smoke",
               "--heartbeat"
             )
-            $minerProcess = Start-Process -FilePath $env:PULSEDAG_V24_MINER_BINARY -ArgumentList $minerArgs -NoNewWindow -PassThru -RedirectStandardOutput $minerLog -RedirectStandardError $minerErr
+            $minerProcess = Start-Process -FilePath $minerBinary -ArgumentList $minerArgs -NoNewWindow -PassThru -RedirectStandardOutput $minerLog -RedirectStandardError $minerErr
             $mined = $false
             for ($i = 0; $i -lt 45; $i++) {
               $minerProcess.Refresh()
