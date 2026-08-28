@@ -100,6 +100,7 @@ fn start_node(
     let data_directory = prepare_data_directory(&configured_data_directory)?;
     if profile == "private" {
         ensure_v2_4_private_state_boundary(&data_directory)?;
+        ensure_v2_4_final_private_state_binding(&data_directory)?;
     }
     let rocksdb_path = data_directory.join("rocksdb");
     fs::create_dir_all(&rocksdb_path)
