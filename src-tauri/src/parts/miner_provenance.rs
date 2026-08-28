@@ -305,13 +305,19 @@ fn verify_miner_provenance_for_launch(
             && proof.binary_sha256.eq_ignore_ascii_case(&binary.sha256)
             && proof.binary_size_bytes == binary.size_bytes
         {
+            if profile == "private" && !is_final_v2_4_miner_provenance(proof) {
+                return Err(
+                    "Private-profile mining requires pulsedag-miner from the final PulseDAG v2.4.0 Task31 release. A v2.3 or provisional proof cannot authorize this miner."
+                        .into(),
+                );
+            }
             return Ok(Some(proof.clone()));
         }
         *guard = None;
     }
     if profile == "private" {
         return Err(
-            "Private-profile mining requires pulsedag-miner to be linked to an approved release archive in this desktop session."
+            "Private-profile mining requires final PulseDAG v2.4.0 miner provenance in this desktop session."
                 .into(),
         );
     }
@@ -541,7 +547,13 @@ fn start_verified_miner(
     }
     let binary = validate_miner_binary_path(Path::new(config.executable_path.trim()))?;
     let proof = verify_miner_provenance_for_launch(&provenance, &binary, &profile)?
-        .ok_or_else(|| "Approved miner provenance is required for private-profile mining.".to_string())?;
+        .ok_or_else(|| "Final v2.4.0 miner provenance is required for private-profile mining.".to_string())?;
+    if !is_final_v2_4_miner_provenance(&proof) {
+        return Err(
+            "The linked miner proof is not the final PulseDAG v2.4.0 Task31 miner release."
+                .into(),
+        );
+    }
     let parsed = parse_local_rpc_endpoint(&config.node_endpoint)?;
     TcpStream::connect_timeout(&parsed.socket_addr, Duration::from_millis(1_500))
         .map_err(|error| format!("The local node RPC is not reachable for mining: {error}"))?;
@@ -604,7 +616,7 @@ fn start_verified_miner(
         &supervisor.sequence,
         "miner-desktop",
         format!(
-            "started pulsedag-miner pid={pid} backend=cpu provenance=approved:{}:{} rpc={} address={} threads={} max_tries={} profile=private",
+            "started pulsedag-miner pid={pid} backend=cpu provenance=approved:{}:{} rpc={} address={} threads={} max_tries={} profile=private release=v2.4.0",
             proof.release_tag,
             proof.archive_name,
             parsed.socket_addr,
@@ -661,5 +673,33 @@ mod miner_provenance_tests {
         assert!(verify_miner_provenance_for_launch(&registry, &binary, "dev")
             .expect("dev profile")
             .is_none());
+    }
+
+    #[test]
+    fn miner_provenance_private_rejects_v2_3_binding() {
+        let registry = MinerProvenanceRegistry::default();
+        let binary = BinaryInfo {
+            path: "/tmp/pulsedag-miner".into(),
+            file_name: "pulsedag-miner".into(),
+            size_bytes: 4,
+            sha256: "a".repeat(64),
+            executable: true,
+        };
+        *registry.provenance.lock().unwrap() = Some(TrustedBinaryProvenance {
+            executable_path: binary.path.clone(),
+            binary_sha256: binary.sha256.clone(),
+            binary_size_bytes: binary.size_bytes,
+            archive_name: "pulsedag-miner-v2.3.0-x86_64-unknown-linux-gnu.tar.gz".into(),
+            archive_sha256: "b".repeat(64),
+            release_tag: "v2.3.0".into(),
+            source_commit: APPROVED_RELEASE_COMMIT.into(),
+            target: "x86_64-unknown-linux-gnu".into(),
+            embedded_path: "pulsedag-miner-v2.3.0-x86_64-unknown-linux-gnu/pulsedag-miner".into(),
+            linked_at_ms: 1,
+        });
+        assert!(verify_miner_provenance_for_launch(&registry, &binary, "private").is_err());
+        assert!(verify_miner_provenance_for_launch(&registry, &binary, "local")
+            .expect("local profile may retain historical proof")
+            .is_some());
     }
 }

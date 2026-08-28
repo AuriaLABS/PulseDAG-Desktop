@@ -80,12 +80,28 @@ fn start_node(
         return Err("Supported configuration profiles are dev, local and private.".into());
     }
     let provenance = verify_binary_provenance_for_launch(&state, &binary, &profile)?;
+    if profile == "private" {
+        let proof = provenance.as_ref().ok_or_else(|| {
+            "PulseDAG v2.4.0 private mode requires final Task31 node provenance in this desktop session."
+                .to_string()
+        })?;
+        if !is_final_v2_4_node_provenance(proof) {
+            return Err(
+                "Private mode requires pulsedagd from the final PulseDAG v2.4.0 Task31 release. A v2.3 or provisional proof cannot authorize this runtime."
+                    .into(),
+            );
+        }
+    }
 
     let configured_data_directory = PathBuf::from(config.data_directory.trim());
     if configured_data_directory.as_os_str().is_empty() {
         return Err("Choose a persistent data directory before starting the node.".into());
     }
     let data_directory = prepare_data_directory(&configured_data_directory)?;
+    if profile == "private" {
+        ensure_v2_4_private_state_boundary(&data_directory)?;
+        ensure_v2_4_final_private_state_binding(&data_directory)?;
+    }
     let rocksdb_path = data_directory.join("rocksdb");
     fs::create_dir_all(&rocksdb_path)
         .map_err(|error| format!("Cannot create RocksDB directory: {error}"))?;
@@ -120,6 +136,9 @@ fn start_node(
                 "local_dev"
             },
         );
+    if profile == "private" {
+        apply_v2_4_private_environment(&mut command);
+    }
 
     let mut child = command
         .spawn()
@@ -151,14 +170,25 @@ fn start_node(
         .as_ref()
         .map(|proof| format!("approved:{}:{}", proof.release_tag, proof.archive_name))
         .unwrap_or_else(|| "unverified-development".into());
+    let identity_label = if profile == "private" {
+        format!(
+            " network={} chain={} protocol={} single_node=true p2p=false public_testnet=false contracts=false",
+            V2_4_PRIVATE_NETWORK_PROFILE,
+            V2_4_PRIVATE_CHAIN_ID,
+            V2_4_PRIVATE_PROTOCOL_CONSENSUS_MODE,
+        )
+    } else {
+        String::new()
+    };
     push_log(
         &state.logs,
         &state.sequence,
         "desktop",
         format!(
-            "started pulsedagd pid={pid} profile={profile} provenance={provenance_label} rpc={} data={}",
+            "started pulsedagd pid={pid} profile={profile} provenance={provenance_label} rpc={} data={}{}",
             rpc.socket_addr,
-            data_directory.display()
+            data_directory.display(),
+            identity_label,
         ),
     );
 

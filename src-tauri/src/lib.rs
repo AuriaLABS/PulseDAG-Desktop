@@ -7,5 +7,15 @@ include!("parts/miner_provenance.rs");
 include!("parts/observability.rs");
 include!("parts/entities.rs");
 include!("parts/diagnostics.rs");
+include!("parts/v2_4_compat.rs");
+include!("parts/v2_4_release.rs");
+include!("parts/v2_4_private.rs");
+include!("parts/v2_4_state_binding.rs");
+#[cfg(test)]
+include!("parts/v2_4_archive_tests.rs");
+#[cfg(test)]
+include!("parts/v2_4_task31_tests.rs");
+#[cfg(test)]
+include!("parts/v2_4_release_rehearsal.rs");
 #[cfg(test)]
 include!("parts/release_rehearsal.rs");
