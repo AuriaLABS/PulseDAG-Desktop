@@ -1,4 +1,8 @@
-import type { BinaryInfo, NodePreferences, NodeRuntimeStatus, RpcHealth } from '../types'
+import { useEffect, useState } from 'react'
+import { getBinaryProvenance } from '../lib/desktop'
+import type { BinaryInfo, BinaryProvenance, NodePreferences, NodeRuntimeStatus, RpcHealth } from '../types'
+
+const V24_FINAL_SOURCE = '876b48826a3875b729888edb88e2b0eea15bb717'
 
 type NodePageProps = {
   preferences: NodePreferences
@@ -14,12 +18,47 @@ type NodePageProps = {
   onOpenSettings: () => void
 }
 
+function isFinalV24NodeProvenance(proof: BinaryProvenance | null): boolean {
+  return Boolean(
+    proof?.approved
+      && proof.releaseTag === 'v2.4.0'
+      && proof.sourceCommit === V24_FINAL_SOURCE
+      && proof.archiveName.startsWith('pulsedagd-v2.4.0-'),
+  )
+}
+
 export function NodePage({ preferences, binaryInfo, nodeStatus, rpcHealth, busy, error, onStart, onStop, onRestart, onValidate, onOpenSettings }: NodePageProps) {
+  const [binaryProvenance, setBinaryProvenance] = useState<BinaryProvenance | null>(null)
   const configured = preferences.executablePath.trim().length > 0 && preferences.dataDirectory.trim().length > 0
+  const privateMode = preferences.configProfile === 'private'
+  const privateProvenanceReady = !privateMode || isFinalV24NodeProvenance(binaryProvenance)
+  const startBlocked = busy || (!nodeStatus.running && (!configured || !privateProvenanceReady))
+
+  useEffect(() => {
+    let cancelled = false
+    void getBinaryProvenance()
+      .then((proof) => {
+        if (!cancelled) setBinaryProvenance(proof)
+      })
+      .catch(() => {
+        if (!cancelled) setBinaryProvenance(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <>
       {error && <div className="notice notice-error">{error}</div>}
+      {privateMode && !privateProvenanceReady && !nodeStatus.running && (
+        <div className="notice notice-warning">
+          Private v2.4.0 stays locked until pulsedagd is verified and linked byte-for-byte to the final Task31 release in this desktop session.
+          <div className="button-row field-actions">
+            <button className="secondary-button compact-button" type="button" onClick={onOpenSettings} disabled={busy}>Verify &amp; link v2.4 release</button>
+          </div>
+        </div>
+      )}
       <section className="page-grid">
         <article className="panel node-control-panel">
           <div className="panel-header">
@@ -34,7 +73,7 @@ export function NodePage({ preferences, binaryInfo, nodeStatus, rpcHealth, busy,
             </div>
           </div>
           <div className="button-row">
-            <button className="primary-button" onClick={nodeStatus.running ? onStop : onStart} disabled={busy || (!configured && !nodeStatus.running)}>{busy ? 'Working…' : nodeStatus.running ? 'Stop node' : 'Start node'}</button>
+            <button className="primary-button" onClick={nodeStatus.running ? onStop : onStart} disabled={startBlocked}>{busy ? 'Working…' : nodeStatus.running ? 'Stop node' : privateMode && !privateProvenanceReady ? 'Link release before start' : 'Start node'}</button>
             <button className="secondary-button" onClick={onRestart} disabled={busy || !nodeStatus.running}>Restart</button>
             <button className="secondary-button" onClick={onValidate} disabled={busy || !preferences.executablePath}>Validate binary</button>
             <button className="secondary-button" onClick={onOpenSettings}>Configure</button>
@@ -57,6 +96,7 @@ export function NodePage({ preferences, binaryInfo, nodeStatus, rpcHealth, busy,
           <div className="panel-header"><div><span className="eyebrow">Executable evidence</span><h3>Local binary</h3></div></div>
           <div className="detail-list">
             <div><span>Validated</span><strong>{binaryInfo ? 'Yes' : 'Not in this session'}</strong></div>
+            <div><span>Private provenance</span><strong className={privateMode ? privateProvenanceReady ? 'success-text' : 'warning-text' : ''}>{privateMode ? privateProvenanceReady ? 'Final v2.4 linked' : 'Link required' : 'Not required'}</strong></div>
             <div><span>Size</span><strong>{binaryInfo ? `${(binaryInfo.sizeBytes / 1_048_576).toFixed(2)} MiB` : '—'}</strong></div>
             <div className="hash-row"><span>SHA-256</span><strong>{binaryInfo?.sha256 ?? '—'}</strong></div>
           </div>
