@@ -4,18 +4,20 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - ".github/scripts/fetch-approved-release.mjs"
+      - ".github/scripts/fetch-v2-4-release.mjs"
       - ".github/workflows/ci.yml"
       - ".github/workflows/native-packages.yml"
+      - ".github/workflows/v2-4-release-validation.yml"
       - "package.json"
       - "src/**"
       - "src-tauri/**"
   push:
     branches: [main]
     paths:
-      - ".github/scripts/fetch-approved-release.mjs"
+      - ".github/scripts/fetch-v2-4-release.mjs"
       - ".github/workflows/ci.yml"
       - ".github/workflows/native-packages.yml"
+      - ".github/workflows/v2-4-release-validation.yml"
       - "package.json"
       - "src/**"
       - "src-tauri/**"
@@ -36,14 +38,14 @@ jobs:
         include:
           - label: Linux x86_64
             os: ubuntu-24.04
-            release_asset: pulsedagd-v2.3.0-x86_64-unknown-linux-gnu.tar.gz
-            miner_release_asset: pulsedag-miner-v2.3.0-x86_64-unknown-linux-gnu.tar.gz
+            node_asset: pulsedagd-v2.4.0-x86_64-unknown-linux-gnu.tar.gz
+            miner_asset: pulsedag-miner-v2.4.0-x86_64-unknown-linux-gnu.tar.gz
             bundles: deb,appimage
             artifact: pulsedag-desktop-linux-x86_64-unsigned
           - label: Windows x86_64
             os: windows-2022
-            release_asset: pulsedagd-v2.3.0-x86_64-pc-windows-msvc.zip
-            miner_release_asset: pulsedag-miner-v2.3.0-x86_64-pc-windows-msvc.zip
+            node_asset: pulsedagd-v2.4.0-x86_64-pc-windows-msvc.zip
+            miner_asset: pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip
             bundles: nsis,msi
             artifact: pulsedag-desktop-windows-x86_64-unsigned
     runs-on: ${{ matrix.os }}
@@ -77,76 +79,87 @@ jobs:
       - name: Generate platform icons
         run: npm run tauri icon src-tauri/icons/icon.png
 
-      - name: Download and verify approved node release
-        id: release
+      - name: Verify and download final v2.4 node release
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
-          node .github/scripts/fetch-approved-release.mjs
-          --asset "${{ matrix.release_asset }}"
-          --output "${{ runner.temp }}/pulsedag-approved-release"
+          node .github/scripts/fetch-v2-4-release.mjs
+          --asset "${{ matrix.node_asset }}"
+          --output "${{ runner.temp }}/pulsedag-v24-node"
 
-      - name: Download and verify approved miner release
-        id: miner_release
+      - name: Verify and download final v2.4 miner release
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
-          node .github/scripts/fetch-approved-release.mjs
-          --asset "${{ matrix.miner_release_asset }}"
-          --output "${{ runner.temp }}/pulsedag-approved-miner-release"
+          node .github/scripts/fetch-v2-4-release.mjs
+          --asset "${{ matrix.miner_asset }}"
+          --output "${{ runner.temp }}/pulsedag-v24-miner"
 
-      - name: Extract approved Linux node and miner
+      - name: Extract final Linux node and miner
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
-          node_extract_dir="$RUNNER_TEMP/pulsedag-approved-release/extracted"
-          miner_extract_dir="$RUNNER_TEMP/pulsedag-approved-miner-release/extracted"
-          mkdir -p "$node_extract_dir" "$miner_extract_dir"
-          tar -xzf "$PULSEDAG_PROVENANCE_ARCHIVE" -C "$node_extract_dir"
-          tar -xzf "$PULSEDAG_MINER_PROVENANCE_ARCHIVE" -C "$miner_extract_dir"
-          node_binary_path="$node_extract_dir/$PULSEDAG_RELEASE_ARCHIVE_ROOT/$PULSEDAG_RELEASE_BINARY_NAME"
-          miner_binary_path="$miner_extract_dir/$PULSEDAG_MINER_RELEASE_ARCHIVE_ROOT/$PULSEDAG_MINER_RELEASE_BINARY_NAME"
-          test -f "$node_binary_path"
-          test -f "$miner_binary_path"
-          chmod +x "$node_binary_path" "$miner_binary_path"
-          echo "PULSEDAG_PROVENANCE_BINARY=$node_binary_path" >> "$GITHUB_ENV"
-          echo "PULSEDAG_MINER_PROVENANCE_BINARY=$miner_binary_path" >> "$GITHUB_ENV"
+          node_extract="$RUNNER_TEMP/pulsedag-v24-node/extracted"
+          miner_extract="$RUNNER_TEMP/pulsedag-v24-miner/extracted"
+          mkdir -p "$node_extract" "$miner_extract"
+          tar -xzf "$PULSEDAG_V24_NODE_ARCHIVE" -C "$node_extract"
+          tar -xzf "$PULSEDAG_V24_MINER_ARCHIVE" -C "$miner_extract"
+          node_binary="$node_extract/$PULSEDAG_V24_NODE_ARCHIVE_ROOT/$PULSEDAG_V24_NODE_BINARY_NAME"
+          miner_binary="$miner_extract/$PULSEDAG_V24_MINER_ARCHIVE_ROOT/$PULSEDAG_V24_MINER_BINARY_NAME"
+          test -f "$node_binary"
+          test -f "$miner_binary"
+          chmod +x "$node_binary" "$miner_binary"
+          echo "PULSEDAG_V24_NODE_BINARY=$node_binary" >> "$GITHUB_ENV"
+          echo "PULSEDAG_V24_MINER_BINARY=$miner_binary" >> "$GITHUB_ENV"
 
-      - name: Extract approved Windows node and miner
+      - name: Extract final Windows node and miner
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $nodeExtractDir = Join-Path $env:RUNNER_TEMP "pulsedag-approved-release\extracted"
-          $minerExtractDir = Join-Path $env:RUNNER_TEMP "pulsedag-approved-miner-release\extracted"
-          New-Item -ItemType Directory -Force -Path $nodeExtractDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $minerExtractDir | Out-Null
-          Expand-Archive -LiteralPath $env:PULSEDAG_PROVENANCE_ARCHIVE -DestinationPath $nodeExtractDir
-          Expand-Archive -LiteralPath $env:PULSEDAG_MINER_PROVENANCE_ARCHIVE -DestinationPath $minerExtractDir
-          $nodeBinaryPath = Join-Path $nodeExtractDir "$env:PULSEDAG_RELEASE_ARCHIVE_ROOT\$env:PULSEDAG_RELEASE_BINARY_NAME"
-          $minerBinaryPath = Join-Path $minerExtractDir "$env:PULSEDAG_MINER_RELEASE_ARCHIVE_ROOT\$env:PULSEDAG_MINER_RELEASE_BINARY_NAME"
-          if (-not (Test-Path -LiteralPath $nodeBinaryPath -PathType Leaf)) {
-            throw "The approved archive did not extract the expected pulsedagd binary."
-          }
-          if (-not (Test-Path -LiteralPath $minerBinaryPath -PathType Leaf)) {
-            throw "The approved archive did not extract the expected pulsedag-miner binary."
-          }
-          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_PROVENANCE_BINARY=$nodeBinaryPath"
-          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_MINER_PROVENANCE_BINARY=$minerBinaryPath"
+          $nodeExtract = Join-Path $env:RUNNER_TEMP "pulsedag-v24-node\extracted"
+          $minerExtract = Join-Path $env:RUNNER_TEMP "pulsedag-v24-miner\extracted"
+          New-Item -ItemType Directory -Force -Path $nodeExtract | Out-Null
+          New-Item -ItemType Directory -Force -Path $minerExtract | Out-Null
+          Expand-Archive -LiteralPath $env:PULSEDAG_V24_NODE_ARCHIVE -DestinationPath $nodeExtract
+          Expand-Archive -LiteralPath $env:PULSEDAG_V24_MINER_ARCHIVE -DestinationPath $minerExtract
+          $nodeBinary = Join-Path $nodeExtract "$env:PULSEDAG_V24_NODE_ARCHIVE_ROOT\$env:PULSEDAG_V24_NODE_BINARY_NAME"
+          $minerBinary = Join-Path $minerExtract "$env:PULSEDAG_V24_MINER_ARCHIVE_ROOT\$env:PULSEDAG_V24_MINER_BINARY_NAME"
+          if (-not (Test-Path -LiteralPath $nodeBinary -PathType Leaf)) { throw "Missing final pulsedagd binary" }
+          if (-not (Test-Path -LiteralPath $minerBinary -PathType Leaf)) { throw "Missing final pulsedag-miner binary" }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_V24_NODE_BINARY=$nodeBinary"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_V24_MINER_BINARY=$minerBinary"
 
-      - name: Rehearse official node provenance and private launch admission
+      - name: Rehearse final v2.4 node provenance
         run: >-
           cargo test
           --manifest-path src-tauri/Cargo.toml
-          provenance_official_release_rehearsal
+          v2_4_final_node_release_rehearsal
           -- --ignored --nocapture
 
-      - name: Rehearse official miner provenance and private mining admission
+      - name: Rehearse final v2.4 miner provenance
         run: >-
           cargo test
           --manifest-path src-tauri/Cargo.toml
-          miner_provenance_official_release_rehearsal
+          v2_4_final_miner_release_rehearsal
           -- --ignored --nocapture
+
+      - name: Smoke final Linux node and miner without starting a network
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PULSEDAG_V24_NODE_BINARY" --version
+          "$PULSEDAG_V24_MINER_BINARY" --help >/dev/null
+
+      - name: Smoke final Windows node and miner without starting a network
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & $env:PULSEDAG_V24_NODE_BINARY --version
+          if ($LASTEXITCODE -ne 0) { throw "pulsedagd --version failed" }
+          & $env:PULSEDAG_V24_MINER_BINARY --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "pulsedag-miner --help failed" }
 
       - name: Typecheck frontend
         run: npm run typecheck
@@ -164,8 +177,8 @@ jobs:
           find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -exec cp '{}' "$staging/" ';'
           find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -exec cp '{}' "$staging/" ';'
           test "$(find "$staging" -maxdepth 1 -type f | wc -l)" -ge 2
-          cp "$PULSEDAG_RELEASE_EVIDENCE" "$staging/OFFICIAL_NODE_RELEASE_EVIDENCE.json"
-          cp "$PULSEDAG_MINER_RELEASE_EVIDENCE" "$staging/OFFICIAL_MINER_RELEASE_EVIDENCE.json"
+          cp "$PULSEDAG_V24_NODE_EVIDENCE" "$staging/OFFICIAL_NODE_RELEASE_EVIDENCE.json"
+          cp "$PULSEDAG_V24_MINER_EVIDENCE" "$staging/OFFICIAL_MINER_RELEASE_EVIDENCE.json"
           (
             cd "$staging"
             sha256sum -- *.deb *.AppImage OFFICIAL_NODE_RELEASE_EVIDENCE.json OFFICIAL_MINER_RELEASE_EVIDENCE.json > SHA256SUMS.txt
@@ -184,8 +197,8 @@ jobs:
             throw "Expected both MSI and NSIS bundles."
           }
           $bundles | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $staging }
-          Copy-Item -LiteralPath $env:PULSEDAG_RELEASE_EVIDENCE -Destination (Join-Path $staging "OFFICIAL_NODE_RELEASE_EVIDENCE.json")
-          Copy-Item -LiteralPath $env:PULSEDAG_MINER_RELEASE_EVIDENCE -Destination (Join-Path $staging "OFFICIAL_MINER_RELEASE_EVIDENCE.json")
+          Copy-Item -LiteralPath $env:PULSEDAG_V24_NODE_EVIDENCE -Destination (Join-Path $staging "OFFICIAL_NODE_RELEASE_EVIDENCE.json")
+          Copy-Item -LiteralPath $env:PULSEDAG_V24_MINER_EVIDENCE -Destination (Join-Path $staging "OFFICIAL_MINER_RELEASE_EVIDENCE.json")
           $checksumLines = Get-ChildItem -LiteralPath $staging -File |
             Sort-Object Name |
             ForEach-Object {
