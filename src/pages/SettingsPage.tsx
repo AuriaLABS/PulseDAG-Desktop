@@ -1,6 +1,8 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import type { BinaryInfo, BinaryProvenance, NodePreferences, ReleaseVerification } from '../types'
 
+const V24_FINAL_SOURCE = '876b48826a3875b729888edb88e2b0eea15bb717'
+
 type SettingsPageProps = {
   value: NodePreferences
   binaryInfo: BinaryInfo | null
@@ -13,8 +15,11 @@ type SettingsPageProps = {
   onValidate: (path: string) => Promise<BinaryInfo | null>
   onPickExecutable: () => Promise<string | null>
   onPickDataDirectory: () => Promise<string | null>
-  onVerifyRelease: () => Promise<ReleaseVerification | null>
-  onBindProvenance: (path: string) => Promise<BinaryProvenance | null>
+  onVerifyRelease: (profile: NodePreferences['configProfile']) => Promise<ReleaseVerification | null>
+  onBindProvenance: (
+    path: string,
+    profile: NodePreferences['configProfile'],
+  ) => Promise<BinaryProvenance | null>
 }
 
 export function SettingsPage({
@@ -93,7 +98,7 @@ export function SettingsPage({
   async function verifyRelease() {
     setChecking(true)
     try {
-      await onVerifyRelease()
+      await onVerifyRelease(draft.configProfile)
     } finally {
       setChecking(false)
     }
@@ -102,13 +107,23 @@ export function SettingsPage({
   async function bindProvenance() {
     setChecking(true)
     try {
-      await onBindProvenance(draft.executablePath)
+      await onBindProvenance(draft.executablePath, draft.configProfile)
     } finally {
       setChecking(false)
     }
   }
 
-  const privateNeedsProvenance = draft.configProfile === 'private' && !binaryProvenance?.approved
+  const privateMode = draft.configProfile === 'private'
+  const privateHasFinalProvenance = binaryProvenance?.approved
+    && binaryProvenance.releaseTag === 'v2.4.0'
+    && binaryProvenance.sourceCommit === V24_FINAL_SOURCE
+    && binaryProvenance.archiveName.startsWith('pulsedagd-v2.4.0-')
+  const privateNeedsProvenance = privateMode && !privateHasFinalProvenance
+  const releaseMatchesProfile = privateMode
+    ? releaseVerification?.approved
+      && releaseVerification.releaseTag === 'v2.4.0'
+      && releaseVerification.sourceCommit === V24_FINAL_SOURCE
+    : releaseVerification?.approved && releaseVerification.releaseTag === 'v2.3.0'
 
   return (
     <form className="settings-layout" onSubmit={submit}>
@@ -117,7 +132,7 @@ export function SettingsPage({
         {error && <div className="notice notice-error inline-notice">{error}</div>}
         {privateNeedsProvenance && (
           <div className="notice notice-warning inline-notice">
-            The private profile requires this executable to be linked to an approved release archive during the current desktop session.
+            Private v2.4.0 requires pulsedagd from the final Task31 release, linked byte-for-byte in this desktop session. A v2.3 or candidate proof is not accepted.
           </div>
         )}
         <label>
@@ -145,7 +160,9 @@ export function SettingsPage({
             <input value={draft.dataDirectory} onChange={(event: ChangeEvent<HTMLInputElement>) => update('dataDirectory', event.target.value)} placeholder="C:\\PulseDAG\\data or /home/user/.pulsedag" />
             <button className="secondary-button compact-button" type="button" onClick={() => void pickDataDirectory()} disabled={busy || checking}>Browse…</button>
           </div>
-          <small>RocksDB and the persistent P2P identity are kept below this directory.</small>
+          <small>{privateMode
+            ? 'Private v2.4.0 requires a new empty directory on first use. Desktop writes identity + final-source markers before RocksDB and never relabels or deletes older state.'
+            : 'RocksDB and the persistent P2P identity are kept below this directory.'}</small>
         </label>
         <label>
           <span>RPC origin</span>
@@ -157,9 +174,11 @@ export function SettingsPage({
           <select value={draft.configProfile} onChange={(event: ChangeEvent<HTMLSelectElement>) => update('configProfile', event.target.value as NodePreferences['configProfile'])}>
             <option value="dev">Development · isolated</option>
             <option value="local">Local network · P2P enabled</option>
-            <option value="private">Private testnet · verified binary required</option>
+            <option value="private">Private v2.4.0 · final Task31 release required</option>
           </select>
-          <small>The desktop always overrides RPC to the selected loopback origin and disables administrative endpoints.</small>
+          <small>{privateMode
+            ? 'Private is forced to the v2.4 identity in isolated single-node mode: loopback RPC, P2P off, public-testnet clock off and contracts off.'
+            : 'The desktop always overrides RPC to the selected loopback origin and disables administrative endpoints.'}</small>
         </label>
         <label className="switch-row disabled-setting">
           <span><strong>Launch on startup</strong><small>Reserved for a later milestone after crash-recovery policy is defined.</small></span>
@@ -173,13 +192,15 @@ export function SettingsPage({
 
       <aside className="settings-side-stack">
         <section className="panel settings-aside">
-          <span className="eyebrow">Approved release evidence</span>
+          <span className="eyebrow">{privateMode ? 'Final v2.4.0 release evidence' : 'Approved v2.3.0 release evidence'}</span>
           <h3>Verify and link the node</h3>
-          <p>First verify the original v2.3.0 ZIP or TAR.GZ against GitHub. Then Rust reads pulsedagd directly from that archive and compares its bytes with the selected executable without extracting or running anything.</p>
-          <button className="secondary-button full-width-button" type="button" onClick={() => void verifyRelease()} disabled={busy || checking}>Verify release archive…</button>
+          <p>{privateMode
+            ? 'Verify the final v2.4.0 Task31 archive against the frozen release asset set, GitHub digest, sidecar, manifest, consolidated checksums and native-smoke provenance. Then compare the selected pulsedagd byte-for-byte with the archive member.'
+            : 'Verify the original v2.3.0 ZIP or TAR.GZ against GitHub. Then Rust reads pulsedagd directly from that archive and compares its bytes with the selected executable without extracting or running anything.'}</p>
+          <button className="secondary-button full-width-button" type="button" onClick={() => void verifyRelease()} disabled={busy || checking}>Verify {privateMode ? 'final v2.4.0' : 'v2.3.0'} release archive…</button>
           {releaseVerification && (
             <div className={`release-result ${releaseVerification.approved ? 'approved' : 'rejected'}`}>
-              <strong>{releaseVerification.approved ? 'Approved archive' : 'Digest mismatch'}</strong>
+              <strong>{releaseMatchesProfile ? 'Approved archive for selected profile' : releaseVerification.approved ? 'Verified for a different profile' : 'Digest or provenance mismatch'}</strong>
               <span>{releaseVerification.archiveName}</span>
               <code>{releaseVerification.sha256}</code>
               <small>{releaseVerification.message}</small>
@@ -189,14 +210,14 @@ export function SettingsPage({
             className="primary-button full-width-button"
             type="button"
             onClick={() => void bindProvenance()}
-            disabled={busy || checking || !releaseVerification?.approved || !draft.executablePath}
+            disabled={busy || checking || !releaseMatchesProfile || !draft.executablePath}
           >
-            Link executable to approved archive
+            Link executable to {privateMode ? 'final v2.4.0' : 'approved v2.3.0'} archive
           </button>
           {binaryProvenance && (
-            <div className="provenance-result approved">
+            <div className={`provenance-result ${privateMode && !privateHasFinalProvenance ? 'rejected' : 'approved'}`}>
               <div className="provenance-result-header">
-                <strong>Byte-for-byte match</strong>
+                <strong>{privateMode && !privateHasFinalProvenance ? 'Proof not valid for private v2.4.0' : 'Byte-for-byte match'}</strong>
                 <span>{binaryProvenance.target}</span>
               </div>
               <small>{binaryProvenance.archiveName}</small>
@@ -216,11 +237,16 @@ export function SettingsPage({
         <section className="panel settings-aside">
           <span className="eyebrow">Security boundary</span>
           <h3>Explicit launch environment</h3>
-          <p>Before starting pulsedagd, the Rust backend removes inherited PULSEDAG_* variables and supplies only the selected profile, loopback RPC binding, state paths and administrative-disable flags.</p>
+          <p>{privateMode
+            ? 'Private v2.4.0 clears inherited PULSEDAG_* values and supplies the frozen chain identity plus an isolated single-node safety contract before starting pulsedagd.'
+            : 'Before starting pulsedagd, the Rust backend removes inherited PULSEDAG_* variables and supplies only the selected profile, loopback RPC binding, state paths and administrative-disable flags.'}</p>
           <div className="detail-list compact-details">
-            <div><span>Private profile</span><strong>Proof required</strong></div>
+            <div><span>Private profile</span><strong>{privateMode ? 'Final v2.4 proof only' : 'Proof required when selected'}</strong></div>
             <div><span>Admin RPC</span><strong>Forced off</strong></div>
             <div><span>RPC exposure</span><strong>Loopback only</strong></div>
+            <div><span>P2P in private v2.4</span><strong>Forced off</strong></div>
+            <div><span>Public-testnet clock</span><strong>Forced off</strong></div>
+            <div><span>Contracts</span><strong>Forced off</strong></div>
             <div><span>Secrets</span><strong>Not accepted</strong></div>
             <div><span>Stop policy</span><strong>TERM, then kill</strong></div>
           </div>

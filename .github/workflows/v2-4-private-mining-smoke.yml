@@ -1,0 +1,356 @@
+name: v2.4 Private Mining Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/scripts/fetch-v2-4-release.mjs"
+      - ".github/workflows/v2-4-private-mining-smoke.yml"
+      - "src-tauri/src/parts/runtime.rs"
+      - "src-tauri/src/parts/mining.rs"
+      - "src-tauri/src/parts/miner_provenance.rs"
+      - "src-tauri/src/parts/v2_4_private.rs"
+      - "src-tauri/src/parts/v2_4_release.rs"
+      - "src-tauri/src/parts/v2_4_state_binding.rs"
+      - "src/lib/v24.ts"
+      - "src/pages/MiningPage.tsx"
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/fetch-v2-4-release.mjs"
+      - ".github/workflows/v2-4-private-mining-smoke.yml"
+      - "src-tauri/src/parts/runtime.rs"
+      - "src-tauri/src/parts/mining.rs"
+      - "src-tauri/src/parts/miner_provenance.rs"
+      - "src-tauri/src/parts/v2_4_private.rs"
+      - "src-tauri/src/parts/v2_4_release.rs"
+      - "src-tauri/src/parts/v2_4_state_binding.rs"
+      - "src/lib/v24.ts"
+      - "src/pages/MiningPage.tsx"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-4-private-mining-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x86_64 isolated mining
+            os: ubuntu-24.04
+            node_asset: pulsedagd-v2.4.0-x86_64-unknown-linux-gnu.tar.gz
+            miner_asset: pulsedag-miner-v2.4.0-x86_64-unknown-linux-gnu.tar.gz
+          - label: Windows x86_64 isolated mining
+            os: windows-2022
+            node_asset: pulsedagd-v2.4.0-x86_64-pc-windows-msvc.zip
+            miner_asset: pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify and download final v2.4 node release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node .github/scripts/fetch-v2-4-release.mjs
+          --asset "${{ matrix.node_asset }}"
+          --output "${{ runner.temp }}/pulsedag-v24-node"
+
+      - name: Verify and download final v2.4 miner release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node .github/scripts/fetch-v2-4-release.mjs
+          --asset "${{ matrix.miner_asset }}"
+          --output "${{ runner.temp }}/pulsedag-v24-miner"
+
+      - name: Extract final Linux binaries
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node_extract="$RUNNER_TEMP/pulsedag-v24-node/extracted"
+          miner_extract="$RUNNER_TEMP/pulsedag-v24-miner/extracted"
+          mkdir -p "$node_extract" "$miner_extract"
+          tar -xzf "$PULSEDAG_V24_NODE_ARCHIVE" -C "$node_extract"
+          tar -xzf "$PULSEDAG_V24_MINER_ARCHIVE" -C "$miner_extract"
+          node_binary="$node_extract/$PULSEDAG_V24_NODE_ARCHIVE_ROOT/$PULSEDAG_V24_NODE_BINARY_NAME"
+          miner_binary="$miner_extract/$PULSEDAG_V24_MINER_ARCHIVE_ROOT/$PULSEDAG_V24_MINER_BINARY_NAME"
+          test -f "$node_binary"
+          test -f "$miner_binary"
+          chmod +x "$node_binary" "$miner_binary"
+          echo "PULSEDAG_V24_NODE_BINARY=$node_binary" >> "$GITHUB_ENV"
+          echo "PULSEDAG_V24_MINER_BINARY=$miner_binary" >> "$GITHUB_ENV"
+
+      - name: Extract final Windows binaries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $nodeExtract = Join-Path $env:RUNNER_TEMP "pulsedag-v24-node\extracted"
+          $minerExtract = Join-Path $env:RUNNER_TEMP "pulsedag-v24-miner\extracted"
+          New-Item -ItemType Directory -Force -Path $nodeExtract | Out-Null
+          New-Item -ItemType Directory -Force -Path $minerExtract | Out-Null
+          Expand-Archive -LiteralPath $env:PULSEDAG_V24_NODE_ARCHIVE -DestinationPath $nodeExtract
+          Expand-Archive -LiteralPath $env:PULSEDAG_V24_MINER_ARCHIVE -DestinationPath $minerExtract
+          $nodeBinary = Join-Path $nodeExtract "$env:PULSEDAG_V24_NODE_ARCHIVE_ROOT\$env:PULSEDAG_V24_NODE_BINARY_NAME"
+          $minerBinary = Join-Path $minerExtract "$env:PULSEDAG_V24_MINER_ARCHIVE_ROOT\$env:PULSEDAG_V24_MINER_BINARY_NAME"
+          if (-not (Test-Path -LiteralPath $nodeBinary -PathType Leaf)) { throw "Missing final pulsedagd binary" }
+          if (-not (Test-Path -LiteralPath $minerBinary -PathType Leaf)) { throw "Missing final pulsedag-miner binary" }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_V24_NODE_BINARY=$nodeBinary"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_V24_MINER_BINARY=$minerBinary"
+
+      - name: Smoke isolated private v2.4 mining on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          state_dir="$GITHUB_WORKSPACE/.v24-private-mining-smoke"
+          node_log="$RUNNER_TEMP/v24-private-node.log"
+          miner_log="$RUNNER_TEMP/v24-private-miner.log"
+          health_file="$RUNNER_TEMP/v24-private-health.txt"
+          node_binary="$PULSEDAG_V24_NODE_BINARY"
+          miner_binary="$PULSEDAG_V24_MINER_BINARY"
+          rm -rf "$state_dir"
+          mkdir -p "$state_dir"
+
+          while IFS='=' read -r key _; do
+            if [[ "$key" == PULSEDAG_* ]]; then unset "$key"; fi
+          done < <(env)
+
+          export PULSEDAG_SINGLE_NODE_MODE=true
+          export PULSEDAG_PRIVATE_TESTNET_ROLE=single
+          export PULSEDAG_CONFIG_PROFILE=private
+          export PULSEDAG_NETWORK_PROFILE=private-testnet-v2.4.0
+          export PULSEDAG_CHAIN_ID=pulsedag-private-v2.4.0
+          export PULSEDAG_CONSENSUS_MODE=legacy
+          export PULSEDAG_PROTOCOL_CONSENSUS_MODE=ghostdag_v1
+          export PULSEDAG_P2P_ENABLED=false
+          export PULSEDAG_P2P_MODE=libp2p-real
+          export PULSEDAG_P2P_BOOTSTRAP=
+          export PULSEDAG_PUBLIC_P2P_MULTIADDR=
+          export PULSEDAG_P2P_MDNS=false
+          export PULSEDAG_P2P_KADEMLIA=true
+          export PULSEDAG_RPC_BIND=127.0.0.1:8280
+          export PULSEDAG_API_PROFILE=private_operator
+          export PULSEDAG_ADMIN_ENABLED=false
+          export PULSEDAG_RPC_CORS_ALLOWLIST=
+          export PULSEDAG_RPC_RATE_LIMIT_REQUESTS_PER_MINUTE=120
+          export PULSEDAG_RPC_RATE_LIMIT_PER_IP=true
+          export PULSEDAG_ROCKSDB_PATH="$state_dir/rocksdb"
+          export PULSEDAG_P2P_IDENTITY_KEY="$state_dir/identity.key"
+          export PULSEDAG_AUTO_PRUNE_ENABLED=false
+          export PULSEDAG_PRUNE_REQUIRE_SNAPSHOT=true
+          export PULSEDAG_PUBLIC_TESTNET_READY=false
+          export PULSEDAG_THIRTY_DAY_PUBLIC_TESTNET_CLOCK_STARTED=false
+          export PULSEDAG_MULTI_HOST_REHEARSAL=false
+          export PULSEDAG_CONTRACTS_ENABLED=false
+
+          node_pid=""
+          miner_pid=""
+          cleanup() {
+            if [[ -n "$miner_pid" ]] && kill -0 "$miner_pid" 2>/dev/null; then
+              kill "$miner_pid" 2>/dev/null || true
+              wait "$miner_pid" 2>/dev/null || true
+            fi
+            if [[ -n "$node_pid" ]] && kill -0 "$node_pid" 2>/dev/null; then
+              kill "$node_pid" 2>/dev/null || true
+              wait "$node_pid" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          "$node_binary" >"$node_log" 2>&1 &
+          node_pid=$!
+
+          healthy=false
+          for _ in $(seq 1 45); do
+            if ! kill -0 "$node_pid" 2>/dev/null; then
+              echo "pulsedagd exited before health became ready" >&2
+              cat "$node_log" >&2 || true
+              exit 1
+            fi
+            if curl --fail --silent --show-error http://127.0.0.1:8280/health >"$health_file"; then
+              healthy=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$healthy" != true ]]; then
+            echo "pulsedagd did not become healthy" >&2
+            cat "$node_log" >&2 || true
+            exit 1
+          fi
+
+          "$miner_binary" \
+            --node http://127.0.0.1:8280 \
+            --miner-address test \
+            --backend cpu \
+            --threads 1 \
+            --max-tries 1000 \
+            --loop \
+            --sleep-ms 250 \
+            --refresh-before-expiry-ms 0 \
+            --worker-id desktop-ci-smoke \
+            --heartbeat >"$miner_log" 2>&1 &
+          miner_pid=$!
+
+          mined=false
+          for _ in $(seq 1 45); do
+            if ! kill -0 "$miner_pid" 2>/dev/null; then
+              echo "pulsedag-miner exited before producing a mining result" >&2
+              cat "$miner_log" >&2 || true
+              exit 1
+            fi
+            if grep -q "miner_telemetry event=mining_result" "$miner_log"; then
+              mined=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$mined" != true ]]; then
+            echo "pulsedag-miner did not complete bounded CPU work" >&2
+            cat "$miner_log" >&2 || true
+            exit 1
+          fi
+          grep -q "miner_telemetry event=template_received" "$miner_log"
+          curl --fail --silent --show-error http://127.0.0.1:8280/health >"$health_file"
+
+      - name: Smoke isolated private v2.4 mining on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stateDir = Join-Path $env:GITHUB_WORKSPACE ".v24-private-mining-smoke"
+          $nodeLog = Join-Path $env:RUNNER_TEMP "v24-private-node.log"
+          $nodeErr = Join-Path $env:RUNNER_TEMP "v24-private-node.err.log"
+          $minerLog = Join-Path $env:RUNNER_TEMP "v24-private-miner.log"
+          $minerErr = Join-Path $env:RUNNER_TEMP "v24-private-miner.err.log"
+          $healthFile = Join-Path $env:RUNNER_TEMP "v24-private-health.txt"
+          $nodeBinary = $env:PULSEDAG_V24_NODE_BINARY
+          $minerBinary = $env:PULSEDAG_V24_MINER_BINARY
+          Remove-Item -LiteralPath $stateDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+
+          Get-ChildItem Env: | Where-Object { $_.Name -like 'PULSEDAG_*' } | ForEach-Object { Remove-Item "Env:$($_.Name)" }
+          $env:PULSEDAG_SINGLE_NODE_MODE = "true"
+          $env:PULSEDAG_PRIVATE_TESTNET_ROLE = "single"
+          $env:PULSEDAG_CONFIG_PROFILE = "private"
+          $env:PULSEDAG_NETWORK_PROFILE = "private-testnet-v2.4.0"
+          $env:PULSEDAG_CHAIN_ID = "pulsedag-private-v2.4.0"
+          $env:PULSEDAG_CONSENSUS_MODE = "legacy"
+          $env:PULSEDAG_PROTOCOL_CONSENSUS_MODE = "ghostdag_v1"
+          $env:PULSEDAG_P2P_ENABLED = "false"
+          $env:PULSEDAG_P2P_MODE = "libp2p-real"
+          $env:PULSEDAG_P2P_BOOTSTRAP = ""
+          $env:PULSEDAG_PUBLIC_P2P_MULTIADDR = ""
+          $env:PULSEDAG_P2P_MDNS = "false"
+          $env:PULSEDAG_P2P_KADEMLIA = "true"
+          $env:PULSEDAG_RPC_BIND = "127.0.0.1:8280"
+          $env:PULSEDAG_API_PROFILE = "private_operator"
+          $env:PULSEDAG_ADMIN_ENABLED = "false"
+          $env:PULSEDAG_RPC_CORS_ALLOWLIST = ""
+          $env:PULSEDAG_RPC_RATE_LIMIT_REQUESTS_PER_MINUTE = "120"
+          $env:PULSEDAG_RPC_RATE_LIMIT_PER_IP = "true"
+          $env:PULSEDAG_ROCKSDB_PATH = Join-Path $stateDir "rocksdb"
+          $env:PULSEDAG_P2P_IDENTITY_KEY = Join-Path $stateDir "identity.key"
+          $env:PULSEDAG_AUTO_PRUNE_ENABLED = "false"
+          $env:PULSEDAG_PRUNE_REQUIRE_SNAPSHOT = "true"
+          $env:PULSEDAG_PUBLIC_TESTNET_READY = "false"
+          $env:PULSEDAG_THIRTY_DAY_PUBLIC_TESTNET_CLOCK_STARTED = "false"
+          $env:PULSEDAG_MULTI_HOST_REHEARSAL = "false"
+          $env:PULSEDAG_CONTRACTS_ENABLED = "false"
+
+          $nodeProcess = $null
+          $minerProcess = $null
+          try {
+            $nodeProcess = Start-Process -FilePath $nodeBinary -NoNewWindow -PassThru -RedirectStandardOutput $nodeLog -RedirectStandardError $nodeErr
+            $healthy = $false
+            for ($i = 0; $i -lt 45; $i++) {
+              $nodeProcess.Refresh()
+              if ($nodeProcess.HasExited) {
+                Get-Content -LiteralPath $nodeLog -ErrorAction SilentlyContinue | Write-Host
+                Get-Content -LiteralPath $nodeErr -ErrorAction SilentlyContinue | Write-Host
+                throw "pulsedagd exited before health became ready"
+              }
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8280/health" -TimeoutSec 2
+                Set-Content -LiteralPath $healthFile -Value $response.Content
+                $healthy = $true
+                break
+              } catch {
+                Start-Sleep -Seconds 1
+              }
+            }
+            if (-not $healthy) { throw "pulsedagd did not become healthy" }
+
+            $minerArgs = @(
+              "--node", "http://127.0.0.1:8280",
+              "--miner-address", "test",
+              "--backend", "cpu",
+              "--threads", "1",
+              "--max-tries", "1000",
+              "--loop",
+              "--sleep-ms", "250",
+              "--refresh-before-expiry-ms", "0",
+              "--worker-id", "desktop-ci-smoke",
+              "--heartbeat"
+            )
+            $minerProcess = Start-Process -FilePath $minerBinary -ArgumentList $minerArgs -NoNewWindow -PassThru -RedirectStandardOutput $minerLog -RedirectStandardError $minerErr
+            $mined = $false
+            for ($i = 0; $i -lt 45; $i++) {
+              $minerProcess.Refresh()
+              if ($minerProcess.HasExited) {
+                Get-Content -LiteralPath $minerLog -ErrorAction SilentlyContinue | Write-Host
+                Get-Content -LiteralPath $minerErr -ErrorAction SilentlyContinue | Write-Host
+                throw "pulsedag-miner exited before producing a mining result"
+              }
+              $text = Get-Content -LiteralPath $minerLog -Raw -ErrorAction SilentlyContinue
+              if ($text -match 'miner_telemetry event=mining_result') {
+                $mined = $true
+                break
+              }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $mined) {
+              Get-Content -LiteralPath $minerLog -ErrorAction SilentlyContinue | Write-Host
+              Get-Content -LiteralPath $minerErr -ErrorAction SilentlyContinue | Write-Host
+              throw "pulsedag-miner did not complete bounded CPU work"
+            }
+            $text = Get-Content -LiteralPath $minerLog -Raw
+            if ($text -notmatch 'miner_telemetry event=template_received') { throw "miner never received a local template" }
+            $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8280/health" -TimeoutSec 2
+            Set-Content -LiteralPath $healthFile -Value $response.Content
+          } finally {
+            if ($minerProcess -and -not $minerProcess.HasExited) {
+              Stop-Process -Id $minerProcess.Id -Force -ErrorAction SilentlyContinue
+            }
+            if ($nodeProcess -and -not $nodeProcess.HasExited) {
+              Stop-Process -Id $nodeProcess.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Upload isolated mining evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-4-private-mining-smoke-${{ matrix.os }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/v24-private-node.log
+            ${{ runner.temp }}/v24-private-node.err.log
+            ${{ runner.temp }}/v24-private-miner.log
+            ${{ runner.temp }}/v24-private-miner.err.log
+            ${{ runner.temp }}/v24-private-health.txt

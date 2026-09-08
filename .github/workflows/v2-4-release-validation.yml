@@ -1,57 +1,43 @@
-name: Native packages
+name: v2.4 Final Release Validation
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - ".github/scripts/fetch-v2-4-release.mjs"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/native-packages.yml"
       - ".github/workflows/v2-4-release-validation.yml"
-      - "package.json"
-      - "src/**"
       - "src-tauri/**"
   push:
     branches: [main]
     paths:
       - ".github/scripts/fetch-v2-4-release.mjs"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/native-packages.yml"
       - ".github/workflows/v2-4-release-validation.yml"
-      - "package.json"
-      - "src/**"
       - "src-tauri/**"
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-packages-${{ github.ref }}
+  group: v2-4-final-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  package:
+  validate:
     name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: Linux x86_64
+          - label: Linux x86_64 final release
             os: ubuntu-24.04
             node_asset: pulsedagd-v2.4.0-x86_64-unknown-linux-gnu.tar.gz
             miner_asset: pulsedag-miner-v2.4.0-x86_64-unknown-linux-gnu.tar.gz
-            bundles: deb,appimage
-            artifact: pulsedag-desktop-linux-x86_64-unsigned
-          - label: Windows x86_64
+          - label: Windows x86_64 final release
             os: windows-2022
             node_asset: pulsedagd-v2.4.0-x86_64-pc-windows-msvc.zip
             miner_asset: pulsedag-miner-v2.4.0-x86_64-pc-windows-msvc.zip
-            bundles: nsis,msi
-            artifact: pulsedag-desktop-windows-x86_64-unsigned
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    env:
-      CARGO_TERM_COLOR: always
 
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +48,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux bundle dependencies
+      - name: Install Linux native dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -73,10 +59,10 @@ jobs:
             patchelf \
             xdg-utils
 
-      - name: Install JavaScript dependencies
+      - name: Install desktop dependencies
         run: npm install
 
-      - name: Generate platform icons
+      - name: Generate Tauri icons
         run: npm run tauri icon src-tauri/icons/icon.png
 
       - name: Verify and download final v2.4 node release
@@ -130,21 +116,28 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_V24_NODE_BINARY=$nodeBinary"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "PULSEDAG_V24_MINER_BINARY=$minerBinary"
 
-      - name: Rehearse final v2.4 node provenance
+      - name: Run v2.4 compatibility and final-release unit gates
+        run: >-
+          cargo test
+          --manifest-path src-tauri/Cargo.toml
+          v2_4_
+          -- --nocapture
+
+      - name: Rehearse final node archive provenance
         run: >-
           cargo test
           --manifest-path src-tauri/Cargo.toml
           v2_4_final_node_release_rehearsal
           -- --ignored --nocapture
 
-      - name: Rehearse final v2.4 miner provenance
+      - name: Rehearse final miner archive provenance
         run: >-
           cargo test
           --manifest-path src-tauri/Cargo.toml
           v2_4_final_miner_release_rehearsal
           -- --ignored --nocapture
 
-      - name: Smoke final Linux node and miner without starting a network
+      - name: Smoke final Linux binaries without starting a network
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -152,7 +145,7 @@ jobs:
           "$PULSEDAG_V24_NODE_BINARY" --version
           "$PULSEDAG_V24_MINER_BINARY" --help >/dev/null
 
-      - name: Smoke final Windows node and miner without starting a network
+      - name: Smoke final Windows binaries without starting a network
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -161,56 +154,12 @@ jobs:
           & $env:PULSEDAG_V24_MINER_BINARY --help | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "pulsedag-miner --help failed" }
 
-      - name: Typecheck frontend
-        run: npm run typecheck
-
-      - name: Build unsigned native bundles
-        run: npm run tauri build -- --bundles ${{ matrix.bundles }}
-
-      - name: Stage Linux bundles and checksums
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          staging="$GITHUB_WORKSPACE/package-artifacts"
-          mkdir -p "$staging"
-          find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -exec cp '{}' "$staging/" ';'
-          find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -exec cp '{}' "$staging/" ';'
-          test "$(find "$staging" -maxdepth 1 -type f | wc -l)" -ge 2
-          cp "$PULSEDAG_V24_NODE_EVIDENCE" "$staging/OFFICIAL_NODE_RELEASE_EVIDENCE.json"
-          cp "$PULSEDAG_V24_MINER_EVIDENCE" "$staging/OFFICIAL_MINER_RELEASE_EVIDENCE.json"
-          (
-            cd "$staging"
-            sha256sum -- *.deb *.AppImage OFFICIAL_NODE_RELEASE_EVIDENCE.json OFFICIAL_MINER_RELEASE_EVIDENCE.json > SHA256SUMS.txt
-          )
-
-      - name: Stage Windows bundles and checksums
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $staging = Join-Path $env:GITHUB_WORKSPACE "package-artifacts"
-          New-Item -ItemType Directory -Force -Path $staging | Out-Null
-          $bundles = @()
-          $bundles += Get-ChildItem -Path "src-tauri\target\release\bundle\msi\*.msi" -File
-          $bundles += Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*.exe" -File
-          if ($bundles.Count -lt 2) {
-            throw "Expected both MSI and NSIS bundles."
-          }
-          $bundles | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $staging }
-          Copy-Item -LiteralPath $env:PULSEDAG_V24_NODE_EVIDENCE -Destination (Join-Path $staging "OFFICIAL_NODE_RELEASE_EVIDENCE.json")
-          Copy-Item -LiteralPath $env:PULSEDAG_V24_MINER_EVIDENCE -Destination (Join-Path $staging "OFFICIAL_MINER_RELEASE_EVIDENCE.json")
-          $checksumLines = Get-ChildItem -LiteralPath $staging -File |
-            Sort-Object Name |
-            ForEach-Object {
-              $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
-              "$hash  $($_.Name)"
-            }
-          Set-Content -LiteralPath (Join-Path $staging "SHA256SUMS.txt") -Value $checksumLines
-
-      - name: Upload unsigned package artifacts
+      - name: Upload final-release verification evidence
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: package-artifacts
-          if-no-files-found: error
+          name: v2-4-final-release-${{ matrix.os }}
           retention-days: 14
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/pulsedag-v24-node/v24-node-release-evidence.json
+            ${{ runner.temp }}/pulsedag-v24-miner/v24-miner-release-evidence.json

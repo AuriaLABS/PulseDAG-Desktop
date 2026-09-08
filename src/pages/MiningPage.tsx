@@ -5,6 +5,11 @@ import {
   selectMinerReleaseArchive,
   verifyApprovedMinerReleaseArchive,
 } from '../lib/desktop'
+import {
+  bindV24MinerBinaryToVerifiedArchive,
+  selectV24ReleaseArchive,
+  verifyV24ReleaseArchive,
+} from '../lib/v24'
 import type {
   BinaryInfo,
   BinaryProvenance,
@@ -15,6 +20,8 @@ import type {
   ReleaseVerification,
   RpcHealth,
 } from '../types'
+
+const V24_FINAL_SOURCE = '876b48826a3875b729888edb88e2b0eea15bb717'
 
 type MiningPageProps = {
   preferences: NodePreferences
@@ -136,9 +143,14 @@ export function MiningPage({
     setChecking(true)
     setProvenanceError('')
     try {
-      const path = await selectMinerReleaseArchive()
+      const privateMode = draft.configProfile === 'private'
+      const path = privateMode
+        ? await selectV24ReleaseArchive('miner')
+        : await selectMinerReleaseArchive()
       if (!path) return
-      const verification = await verifyApprovedMinerReleaseArchive(path)
+      const verification = privateMode
+        ? await verifyV24ReleaseArchive(path, 'miner')
+        : await verifyApprovedMinerReleaseArchive(path)
       setReleaseVerification(verification)
       setMinerProvenance(null)
       if (!verification.approved) setProvenanceError(verification.message)
@@ -156,10 +168,15 @@ export function MiningPage({
     setChecking(true)
     setProvenanceError('')
     try {
-      const proof = await bindMinerBinaryToVerifiedArchive(
-        releaseVerification.archivePath,
-        draft.minerExecutablePath,
-      )
+      const proof = draft.configProfile === 'private'
+        ? await bindV24MinerBinaryToVerifiedArchive(
+            releaseVerification.archivePath,
+            draft.minerExecutablePath,
+          )
+        : await bindMinerBinaryToVerifiedArchive(
+            releaseVerification.archivePath,
+            draft.minerExecutablePath,
+          )
       setMinerProvenance(proof.approved ? proof : null)
       if (!proof.approved) setProvenanceError(proof.message)
     } catch (nextError) {
@@ -173,7 +190,18 @@ export function MiningPage({
   const configured = draft.minerExecutablePath.trim().length > 0
     && draft.minerAddress.trim().length > 0
   const nodeReady = nodeStatus.running && rpcHealth.reachable
-  const privateBlocked = draft.configProfile === 'private' && !minerProvenance?.approved
+  const privateMode = draft.configProfile === 'private'
+  const privateHasFinalProvenance = minerProvenance?.approved
+    && minerProvenance.releaseTag === 'v2.4.0'
+    && minerProvenance.sourceCommit === V24_FINAL_SOURCE
+    && minerProvenance.archiveName.startsWith('pulsedag-miner-v2.4.0-')
+  const privateBlocked = privateMode && !privateHasFinalProvenance
+  const releaseMatchesProfile = privateMode
+    ? releaseVerification?.approved
+      && releaseVerification.releaseTag === 'v2.4.0'
+      && releaseVerification.sourceCommit === V24_FINAL_SOURCE
+      && releaseVerification.archiveName.startsWith('pulsedag-miner-v2.4.0-')
+    : releaseVerification?.approved && releaseVerification.releaseTag === 'v2.3.0'
   const telemetry = minerStatus.telemetry
 
   return (
@@ -181,7 +209,7 @@ export function MiningPage({
       {(error || provenanceError) && <div className="notice notice-error">{provenanceError || error}</div>}
       {privateBlocked && (
         <div className="notice notice-warning">
-          Private-profile mining requires the selected pulsedag-miner binary to be linked byte-for-byte to its approved v2.3.0 release archive in this desktop session.
+          Private v2.4.0 mining requires pulsedag-miner from the final Task31 release, linked byte-for-byte in this desktop session. A v2.3 or provisional proof is not accepted.
         </div>
       )}
       {!nodeReady && (
@@ -228,26 +256,30 @@ export function MiningPage({
 
           <section className="miner-provenance-card">
             <div>
-              <span className="eyebrow">Approved miner evidence</span>
-              <strong>{minerProvenance?.approved ? 'Executable linked' : 'Not linked in this session'}</strong>
-              <small>Required only for the private profile. Development and local binaries remain available without release proof.</small>
+              <span className="eyebrow">{privateMode ? 'Final v2.4.0 miner evidence' : 'Approved v2.3.0 miner evidence'}</span>
+              <strong>{privateMode
+                ? privateHasFinalProvenance ? 'Final v2.4.0 executable linked' : 'Final v2.4.0 proof required'
+                : minerProvenance?.approved ? 'Executable linked' : 'Not linked in this session'}</strong>
+              <small>{privateMode
+                ? 'Private mining accepts only the final Task31 v2.4.0 miner proof. Development and local profiles retain the legacy v2.3 verification path.'
+                : 'Release proof is optional for development/local mining; private mode requires final v2.4.0 provenance.'}</small>
             </div>
             <div className="button-row">
-              <button className="secondary-button" type="button" onClick={() => void verifyRelease()} disabled={busy || checking || minerStatus.running}>Verify miner archive…</button>
-              <button className="primary-button" type="button" onClick={() => void bindProvenance()} disabled={busy || checking || minerStatus.running || !releaseVerification?.approved || !draft.minerExecutablePath}>Link miner binary</button>
+              <button className="secondary-button" type="button" onClick={() => void verifyRelease()} disabled={busy || checking || minerStatus.running}>Verify {privateMode ? 'final v2.4.0' : 'v2.3.0'} miner archive…</button>
+              <button className="primary-button" type="button" onClick={() => void bindProvenance()} disabled={busy || checking || minerStatus.running || !releaseMatchesProfile || !draft.minerExecutablePath}>Link miner binary</button>
             </div>
             {releaseVerification && (
-              <div className={`release-result ${releaseVerification.approved ? 'approved' : 'rejected'}`}>
-                <strong>{releaseVerification.approved ? 'Approved miner archive' : 'Digest mismatch'}</strong>
+              <div className={`release-result ${releaseMatchesProfile ? 'approved' : 'rejected'}`}>
+                <strong>{releaseMatchesProfile ? 'Approved miner archive for selected profile' : releaseVerification.approved ? 'Verified for a different profile' : 'Digest or provenance mismatch'}</strong>
                 <span>{releaseVerification.archiveName}</span>
                 <code>{releaseVerification.sha256}</code>
                 <small>{releaseVerification.message}</small>
               </div>
             )}
             {minerProvenance && (
-              <div className="provenance-result approved">
+              <div className={`provenance-result ${privateMode && !privateHasFinalProvenance ? 'rejected' : 'approved'}`}>
                 <div className="provenance-result-header">
-                  <strong>Byte-for-byte match</strong>
+                  <strong>{privateMode && !privateHasFinalProvenance ? 'Proof not valid for private v2.4.0' : 'Byte-for-byte match'}</strong>
                   <span>{minerProvenance.target}</span>
                 </div>
                 <small>{minerProvenance.archiveName}</small>
@@ -320,6 +352,12 @@ export function MiningPage({
               <div><span>Templates</span><strong>{telemetry.templatesReceived.toLocaleString()}</strong></div>
               <div><span>Accepted blocks</span><strong className="success-text">{telemetry.submitsAccepted.toLocaleString()}</strong></div>
               <div><span>Rejected submits</span><strong className={telemetry.submitsRejected ? 'warning-text' : ''}>{telemetry.submitsRejected.toLocaleString()}</strong></div>
+              <div><span>Finality unknown</span><strong className={(telemetry.submitsFinalityUnknown ?? 0) ? 'warning-text' : ''}>{(telemetry.submitsFinalityUnknown ?? 0).toLocaleString()}</strong></div>
+              <div><span>Reconciled accepted</span><strong className="success-text">{(telemetry.submitsReconciledAccepted ?? 0).toLocaleString()}</strong></div>
+              <div><span>Reconciled rejected</span><strong className={(telemetry.submitsReconciledRejected ?? 0) ? 'warning-text' : ''}>{(telemetry.submitsReconciledRejected ?? 0).toLocaleString()}</strong></div>
+              <div><span>Still unknown</span><strong className={(telemetry.submitsStillUnknown ?? 0) ? 'warning-text' : ''}>{(telemetry.submitsStillUnknown ?? 0).toLocaleString()}</strong></div>
+              <div><span>Search exhausted</span><strong>{(telemetry.searchExhaustions ?? 0).toLocaleString()}</strong></div>
+              <div><span>Backend verify failures</span><strong className={(telemetry.backendVerificationFailures ?? 0) ? 'warning-text' : ''}>{(telemetry.backendVerificationFailures ?? 0).toLocaleString()}</strong></div>
               <div><span>Stale skips</span><strong>{telemetry.templatesSkippedStale.toLocaleString()}</strong></div>
             </div>
             <div className="detail-list compact-details mining-runtime-details">
@@ -328,7 +366,7 @@ export function MiningPage({
               <div><span>Backend</span><strong>{telemetry.backend ?? 'cpu'}</strong></div>
               <div><span>Workers</span><strong>{telemetry.workers ?? draft.minerThreads}</strong></div>
               <div><span>Last event</span><strong>{telemetry.lastEvent ?? '—'}</strong></div>
-              <div><span>Last reject</span><strong>{telemetry.lastRejectCode ?? '—'}</strong></div>
+              <div><span>Last reject / finality</span><strong>{telemetry.lastRejectCode ?? '—'}</strong></div>
               <div><span>Template height</span><strong>{telemetry.lastTemplateHeight ?? '—'}</strong></div>
               <div><span>Accepted height</span><strong>{telemetry.lastAcceptedHeight ?? '—'}</strong></div>
             </div>
