@@ -33,3 +33,4 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml provenance_
       - run: cargo test --manifest-path src-tauri/Cargo.toml diagnostic_
       - run: cargo test --manifest-path src-tauri/Cargo.toml v2_4_
+      - run: cargo test --manifest-path src-tauri/Cargo.toml core_release_identity_

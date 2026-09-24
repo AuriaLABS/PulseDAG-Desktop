@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { StatusCard } from '../components/StatusCard'
+import { isFinalV24NodeProvenance } from '../lib/coreRelease'
 import { getBinaryProvenance } from '../lib/desktop'
 import type { BinaryInfo, BinaryProvenance, DesktopBridgeStatus, NodePreferences, NodeRuntimeStatus, RpcHealth } from '../types'
-
-const V24_FINAL_SOURCE = '876b48826a3875b729888edb88e2b0eea15bb717'
 
 type OverviewPageProps = {
   bridge: DesktopBridgeStatus | null
@@ -14,15 +13,6 @@ type OverviewPageProps = {
   busy: boolean
   onOpenSettings: () => void
   onStart: () => void
-}
-
-function isFinalV24NodeProvenance(proof: BinaryProvenance | null): boolean {
-  return Boolean(
-    proof?.approved
-      && proof.releaseTag === 'v2.4.0'
-      && proof.sourceCommit === V24_FINAL_SOURCE
-      && proof.archiveName.startsWith('pulsedagd-v2.4.0-'),
-  )
 }
 
 export function OverviewPage({ bridge, preferences, binaryInfo, nodeStatus, rpcHealth, busy, onOpenSettings, onStart }: OverviewPageProps) {
