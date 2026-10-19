@@ -5,6 +5,7 @@ import {
   selectMinerReleaseArchive,
   verifyApprovedMinerReleaseArchive,
 } from '../lib/desktop'
+import { V24_CORE_RELEASE_IDENTITY, isFinalV24MinerProvenance } from '../lib/coreRelease'
 import {
   bindV24MinerBinaryToVerifiedArchive,
   selectV24ReleaseArchive,
@@ -20,8 +21,6 @@ import type {
   ReleaseVerification,
   RpcHealth,
 } from '../types'
-
-const V24_FINAL_SOURCE = '876b48826a3875b729888edb88e2b0eea15bb717'
 
 type MiningPageProps = {
   preferences: NodePreferences
@@ -51,6 +50,17 @@ function formatHashrate(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} MH/s`
   if (value >= 1_000) return `${(value / 1_000).toFixed(2)} kH/s`
   return `${value.toFixed(2)} H/s`
+}
+
+function shortTelemetryIdentity(value: string | null | undefined, maximum = 28): string {
+  if (!value) return '—'
+  return value.length <= maximum ? value : `${value.slice(0, maximum - 1)}…`
+}
+
+function submitFinalityTone(value: string | null | undefined): string {
+  if (value === 'accepted') return 'success-text'
+  if (value === 'rejected' || value === 'stale' || value === 'unknown_finality') return 'warning-text'
+  return ''
 }
 
 function readableError(error: unknown): string {
@@ -191,16 +201,13 @@ export function MiningPage({
     && draft.minerAddress.trim().length > 0
   const nodeReady = nodeStatus.running && rpcHealth.reachable
   const privateMode = draft.configProfile === 'private'
-  const privateHasFinalProvenance = minerProvenance?.approved
-    && minerProvenance.releaseTag === 'v2.4.0'
-    && minerProvenance.sourceCommit === V24_FINAL_SOURCE
-    && minerProvenance.archiveName.startsWith('pulsedag-miner-v2.4.0-')
+  const privateHasFinalProvenance = isFinalV24MinerProvenance(minerProvenance)
   const privateBlocked = privateMode && !privateHasFinalProvenance
   const releaseMatchesProfile = privateMode
     ? releaseVerification?.approved
-      && releaseVerification.releaseTag === 'v2.4.0'
-      && releaseVerification.sourceCommit === V24_FINAL_SOURCE
-      && releaseVerification.archiveName.startsWith('pulsedag-miner-v2.4.0-')
+      && releaseVerification.releaseTag === V24_CORE_RELEASE_IDENTITY.releaseTag
+      && releaseVerification.sourceCommit === V24_CORE_RELEASE_IDENTITY.sourceCommit
+      && releaseVerification.archiveName.startsWith(`pulsedag-miner-${V24_CORE_RELEASE_IDENTITY.releaseTag}-`)
     : releaseVerification?.approved && releaseVerification.releaseTag === 'v2.3.0'
   const telemetry = minerStatus.telemetry
 
@@ -365,8 +372,12 @@ export function MiningPage({
               <div><span>Uptime</span><strong>{minerStatus.uptimeSeconds != null ? `${minerStatus.uptimeSeconds}s` : '—'}</strong></div>
               <div><span>Backend</span><strong>{telemetry.backend ?? 'cpu'}</strong></div>
               <div><span>Workers</span><strong>{telemetry.workers ?? draft.minerThreads}</strong></div>
+              <div><span>Mining protocol</span><strong className={telemetry.protocolVersion === 3 ? 'success-text' : ''}>{telemetry.protocolVersion != null ? `v${telemetry.protocolVersion}` : '—'}</strong></div>
+              <div><span>Protocol fingerprint</span><strong title={telemetry.protocolIdentityFingerprint ?? undefined}>{shortTelemetryIdentity(telemetry.protocolIdentityFingerprint)}</strong></div>
+              <div><span>Template ID</span><strong title={telemetry.lastTemplateId ?? undefined}>{shortTelemetryIdentity(telemetry.lastTemplateId)}</strong></div>
+              <div><span>Submit finality</span><strong className={submitFinalityTone(telemetry.lastSubmitFinality)}>{telemetry.lastSubmitFinality ?? '—'}</strong></div>
               <div><span>Last event</span><strong>{telemetry.lastEvent ?? '—'}</strong></div>
-              <div><span>Last reject / finality</span><strong>{telemetry.lastRejectCode ?? '—'}</strong></div>
+              <div><span>Last reject code</span><strong>{telemetry.lastRejectCode ?? '—'}</strong></div>
               <div><span>Template height</span><strong>{telemetry.lastTemplateHeight ?? '—'}</strong></div>
               <div><span>Accepted height</span><strong>{telemetry.lastAcceptedHeight ?? '—'}</strong></div>
             </div>
