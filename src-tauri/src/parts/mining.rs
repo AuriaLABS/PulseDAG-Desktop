@@ -36,6 +36,10 @@ struct MinerTelemetrySnapshot {
     submits_reconciled_rejected: u64,
     submits_still_unknown: u64,
     backend_verification_failures: u64,
+    protocol_version: Option<u32>,
+    protocol_identity_fingerprint: Option<String>,
+    last_template_id: Option<String>,
+    last_submit_finality: Option<String>,
     last_reject_code: Option<String>,
     last_template_height: Option<u64>,
     last_accepted_height: Option<u64>,
@@ -180,19 +184,42 @@ fn miner_runtime_status(
     }
 }
 
+fn telemetry_field<'a>(line: &'a str, prefix: &str, key: &str) -> Option<&'a str> {
+    line.strip_prefix(prefix)?
+        .split_whitespace()
+        .find_map(|token| {
+            let (token_key, value) = token.split_once('=')?;
+            (token_key == key).then_some(value)
+        })
+}
+
+fn bounded_telemetry_text(value: &str, maximum: usize) -> Option<String> {
+    (!value.is_empty()
+        && value != "-"
+        && value.len() <= maximum
+        && !value.chars().any(char::is_control))
+        .then(|| value.to_string())
+}
+
 fn update_miner_telemetry(line: &str, telemetry: &Arc<Mutex<MinerTelemetrySnapshot>>) {
-    if !line.starts_with("miner_telemetry ") {
+    let recognized = line.starts_with("miner_telemetry ")
+        || line.starts_with("template received: ")
+        || line.starts_with("submit_result: ")
+        || line.starts_with("submit_reconciled: ");
+    if !recognized {
         return;
     }
+
     let Ok(mut snapshot) = telemetry.lock() else {
         return;
     };
 
-    for token in line.split_whitespace().skip(1) {
-        let Some((key, value)) = token.split_once('=') else {
-            continue;
-        };
-        match key {
+    if line.starts_with("miner_telemetry ") {
+        for token in line.split_whitespace().skip(1) {
+            let Some((key, value)) = token.split_once('=') else {
+                continue;
+            };
+            match key {
             "event" => snapshot.last_event = Some(value.to_string()),
             "backend" => snapshot.backend = Some(value.to_string()),
             "workers" => snapshot.workers = value.parse().ok(),
@@ -266,9 +293,46 @@ fn update_miner_telemetry(line: &str, telemetry: &Arc<Mutex<MinerTelemetrySnapsh
             }
             "last_template_height" => snapshot.last_template_height = value.parse().ok(),
             "last_accepted_height" => snapshot.last_accepted_height = value.parse().ok(),
-            _ => {}
+                _ => {}
+            }
         }
+    } else if line.starts_with("template received: ") {
+        snapshot.protocol_version =
+            telemetry_field(line, "template received: ", "protocol_version").and_then(|value| value.parse().ok());
+        snapshot.last_template_id = telemetry_field(line, "template received: ", "id")
+            .and_then(|value| bounded_telemetry_text(value, 512));
+        snapshot.protocol_identity_fingerprint =
+            telemetry_field(line, "template received: ", "protocol_identity_fingerprint")
+                .and_then(|value| bounded_telemetry_text(value, 256));
+    } else if line.starts_with("submit_result: ") {
+        let accepted = telemetry_field(line, "submit_result: ", "accepted") == Some("true");
+        let stale = telemetry_field(line, "submit_result: ", "stale_template") == Some("true");
+        let reason_code = telemetry_field(line, "submit_result: ", "reason_code").unwrap_or("-");
+        snapshot.last_submit_finality = Some(
+            if reason_code == "submit_finality_unknown" {
+                "unknown_finality"
+            } else if stale {
+                "stale"
+            } else if accepted {
+                "accepted"
+            } else {
+                "rejected"
+            }
+            .to_string(),
+        );
+    } else if line.starts_with("submit_reconciled: ") {
+        snapshot.last_submit_finality = match telemetry_field(
+            line,
+            "submit_reconciled: ",
+            "outcome",
+        ) {
+            Some("accepted") => Some("accepted".into()),
+            Some("rejected") => Some("rejected".into()),
+            Some("still_unknown") => Some("unknown_finality".into()),
+            _ => snapshot.last_submit_finality.clone(),
+        };
     }
+
     snapshot.updated_at_ms = Some(unix_time_ms());
 }
 
@@ -657,6 +721,58 @@ mod miner_tests {
         assert_eq!(snapshot.submits_finality_unknown, 0);
         assert_eq!(snapshot.last_accepted_height, Some(19));
         assert!(snapshot.updated_at_ms.is_some());
+    }
+
+    #[test]
+    fn miner_v3_template_identity_is_parsed_from_official_miner_output() {
+        let telemetry = Arc::new(Mutex::new(MinerTelemetrySnapshot::default()));
+        update_miner_telemetry(
+            "template received: protocol_version=3 id=v3:feedface:template-42 height=77 hash=abc difficulty=9 created_at=1 expires_at=2 ttl=60s grace=5s target_hex=00 protocol_identity_fingerprint=feedface",
+            &telemetry,
+        );
+        let snapshot = telemetry.lock().unwrap().clone();
+        assert_eq!(snapshot.protocol_version, Some(3));
+        assert_eq!(
+            snapshot.protocol_identity_fingerprint.as_deref(),
+            Some("feedface")
+        );
+        assert_eq!(
+            snapshot.last_template_id.as_deref(),
+            Some("v3:feedface:template-42")
+        );
+        assert!(snapshot.updated_at_ms.is_some());
+    }
+
+    #[test]
+    fn miner_v3_submit_finality_preserves_stale_and_unknown_states() {
+        let telemetry = Arc::new(Mutex::new(MinerTelemetrySnapshot::default()));
+
+        update_miner_telemetry(
+            "submit_result: accepted=false rejected=true reason_code=stale_template block_hash=abc height=77 pow_accepted_dev=false stale_template=true",
+            &telemetry,
+        );
+        assert_eq!(
+            telemetry.lock().unwrap().last_submit_finality.as_deref(),
+            Some("stale")
+        );
+
+        update_miner_telemetry(
+            "submit_result: accepted=false rejected=true reason_code=submit_finality_unknown block_hash=abc height=77 pow_accepted_dev=true stale_template=false",
+            &telemetry,
+        );
+        assert_eq!(
+            telemetry.lock().unwrap().last_submit_finality.as_deref(),
+            Some("unknown_finality")
+        );
+
+        update_miner_telemetry(
+            "submit_reconciled: outcome=accepted block_hash=abc height=77",
+            &telemetry,
+        );
+        assert_eq!(
+            telemetry.lock().unwrap().last_submit_finality.as_deref(),
+            Some("accepted")
+        );
     }
 
     #[test]
