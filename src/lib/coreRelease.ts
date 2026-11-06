@@ -42,3 +42,17 @@ export function matchesCoreNodeProvenance(
 export function isFinalV24NodeProvenance(proof: BinaryProvenance | null): boolean {
   return matchesCoreNodeProvenance(proof, V24_CORE_RELEASE_IDENTITY)
 }
+
+export function matchesCoreMinerProvenance(
+  proof: BinaryProvenance | null,
+  identity: CoreReleaseIdentity,
+): boolean {
+  if (!proof?.approved || !isFrozenCoreReleaseIdentity(identity)) return false
+  return proof.releaseTag === identity.releaseTag
+    && proof.sourceCommit === identity.sourceCommit
+    && proof.archiveName.startsWith(`pulsedag-miner-${identity.releaseTag}-`)
+}
+
+export function isFinalV24MinerProvenance(proof: BinaryProvenance | null): boolean {
+  return matchesCoreMinerProvenance(proof, V24_CORE_RELEASE_IDENTITY)
+}

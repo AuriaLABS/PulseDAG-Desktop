@@ -89,6 +89,10 @@ export type MinerTelemetry = {
   submitsReconciledRejected?: number
   submitsStillUnknown?: number
   backendVerificationFailures?: number
+  protocolVersion?: number | null
+  protocolIdentityFingerprint?: string | null
+  lastTemplateId?: string | null
+  lastSubmitFinality?: 'accepted' | 'rejected' | 'stale' | 'unknown_finality' | null
   lastRejectCode: string | null
   lastTemplateHeight: number | null
   lastAcceptedHeight: number | null
