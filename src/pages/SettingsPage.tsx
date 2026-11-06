@@ -1,8 +1,9 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
-import { V24_CORE_RELEASE_IDENTITY, isFinalV24NodeProvenance } from '../lib/coreRelease'
+import { matchesCoreReleaseArchive, isFinalV24NodeProvenance, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
 import type { BinaryInfo, BinaryProvenance, NodePreferences, ReleaseVerification } from '../types'
 
 type SettingsPageProps = {
+  coreReleaseIdentities: CoreReleaseIdentityRegistry | null
   value: NodePreferences
   binaryInfo: BinaryInfo | null
   releaseVerification: ReleaseVerification | null
@@ -22,6 +23,7 @@ type SettingsPageProps = {
 }
 
 export function SettingsPage({
+  coreReleaseIdentities,
   value,
   binaryInfo,
   releaseVerification,
@@ -113,13 +115,10 @@ export function SettingsPage({
   }
 
   const privateMode = draft.configProfile === 'private'
-  const privateHasFinalProvenance = isFinalV24NodeProvenance(binaryProvenance)
+  const privateHasFinalProvenance = isFinalV24NodeProvenance(binaryProvenance, coreReleaseIdentities)
   const privateNeedsProvenance = privateMode && !privateHasFinalProvenance
   const releaseMatchesProfile = privateMode
-    ? releaseVerification?.approved
-      && releaseVerification.releaseTag === V24_CORE_RELEASE_IDENTITY.releaseTag
-      && releaseVerification.sourceCommit === V24_CORE_RELEASE_IDENTITY.sourceCommit
-      && releaseVerification.archiveName.startsWith(`pulsedagd-${V24_CORE_RELEASE_IDENTITY.releaseTag}-`)
+    ? matchesCoreReleaseArchive(releaseVerification, coreReleaseIdentities?.v24, 'pulsedagd')
     : releaseVerification?.approved && releaseVerification.releaseTag === 'v2.3.0'
 
   return (
