@@ -126,6 +126,11 @@ export function SettingsPage({
       <section className="panel settings-panel">
         <div className="panel-header"><div><span className="eyebrow">Local configuration</span><h3>Node runtime</h3></div></div>
         {error && <div className="notice notice-error inline-notice">{error}</div>}
+        {privateMode && !coreReleaseIdentities && (
+          <div className="notice notice-warning inline-notice">
+            Native Core release identity is unavailable. Private archive linking remains locked until the desktop bridge responds.
+          </div>
+        )}
         {privateNeedsProvenance && (
           <div className="notice notice-warning inline-notice">
             Private v2.4.0 requires pulsedagd from the final Task31 release, linked byte-for-byte in this desktop session. A v2.3 or candidate proof is not accepted.
@@ -238,6 +243,8 @@ export function SettingsPage({
             : 'Before starting pulsedagd, the Rust backend removes inherited PULSEDAG_* variables and supplies only the selected profile, loopback RPC binding, state paths and administrative-disable flags.'}</p>
           <div className="detail-list compact-details">
             <div><span>Private profile</span><strong>{privateMode ? 'Final v2.4 proof only' : 'Proof required when selected'}</strong></div>
+            <div><span>Core identity source</span><strong>{coreReleaseIdentities ? 'Native registry' : 'Unavailable · fail-closed'}</strong></div>
+            <div><span>Core v3.0.0 target</span><strong>{coreReleaseIdentities?.v30.freezeState ?? 'Unavailable'}</strong></div>
             <div><span>Admin RPC</span><strong>Forced off</strong></div>
             <div><span>RPC exposure</span><strong>Loopback only</strong></div>
             <div><span>P2P in private v2.4</span><strong>Forced off</strong></div>
