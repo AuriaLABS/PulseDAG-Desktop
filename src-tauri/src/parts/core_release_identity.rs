@@ -75,7 +75,7 @@ mod core_release_identity_tests {
     use super::*;
 
     #[test]
-    fn native_read_only_registry_preserves_frozen_v24_and_pending_v3() {
+    fn core_release_identity_native_registry_preserves_frozen_v24_and_pending_v3() {
         let registry = get_core_release_identities();
         assert!(registry.v24.is_frozen());
         assert!(!registry.v30.is_frozen());
