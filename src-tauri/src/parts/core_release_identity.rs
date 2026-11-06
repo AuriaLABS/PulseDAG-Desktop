@@ -1,10 +1,12 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum CoreReleaseFreezeState {
     Frozen,
     Pending,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CoreReleaseIdentity {
     pub(crate) release_tag: &'static str,
     pub(crate) source_commit: Option<&'static str>,
@@ -51,9 +53,42 @@ pub(crate) const V3_0_CORE_RELEASE_IDENTITY: CoreReleaseIdentity = CoreReleaseId
     freeze_state: CoreReleaseFreezeState::Pending,
 };
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CoreReleaseIdentityRegistry {
+    v24: CoreReleaseIdentity,
+    v30: CoreReleaseIdentity,
+}
+
+/// Read-only identity metadata. This command does not grant release trust or
+/// enable any network, mining, wallet, or smart-contract capability.
+#[tauri::command]
+fn get_core_release_identities() -> CoreReleaseIdentityRegistry {
+    CoreReleaseIdentityRegistry {
+        v24: V2_4_CORE_RELEASE_IDENTITY,
+        v30: V3_0_CORE_RELEASE_IDENTITY,
+    }
+}
+
 #[cfg(test)]
 mod core_release_identity_tests {
     use super::*;
+
+    #[test]
+    fn native_read_only_registry_preserves_frozen_v24_and_pending_v3() {
+        let registry = get_core_release_identities();
+        assert!(registry.v24.is_frozen());
+        assert!(!registry.v30.is_frozen());
+
+        let json = serde_json::to_value(registry).unwrap();
+        assert_eq!(json["v24"]["freezeState"], "frozen");
+        assert_eq!(json["v24"]["releaseTag"], "v2.4.0");
+        assert_eq!(json["v24"]["sourceCommit"], "876b48826a3875b729888edb88e2b0eea15bb717");
+        assert_eq!(json["v30"]["freezeState"], "pending");
+        assert_eq!(json["v30"]["releaseTag"], "v3.0.0");
+        assert!(json["v30"]["sourceCommit"].is_null());
+        assert!(json["v30"]["sourceTree"].is_null());
+    }
 
     #[test]
     fn historical_v2_4_release_identity_remains_frozen_and_exact() {
