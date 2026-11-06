@@ -31,6 +31,7 @@ import {
   validateNodeBinary,
   verifyApprovedReleaseArchive,
 } from '../lib/desktop'
+import { V24_CORE_RELEASE_IDENTITY } from '../lib/coreRelease'
 import {
   bindV24NodeBinaryToVerifiedArchive,
   selectV24ReleaseArchive,
@@ -58,8 +59,6 @@ import type {
   ReleaseVerification,
   RpcHealth,
 } from '../types'
-
-const V24_FINAL_SOURCE = '876b48826a3875b729888edb88e2b0eea15bb717'
 
 const sectionTitles: Record<AppSection, { eyebrow: string; title: string }> = {
   overview: { eyebrow: 'PulseDAG operator workspace', title: 'Overview' },
@@ -386,9 +385,9 @@ export function App() {
       return null
     }
     const releaseMatchesProfile = profile === 'private'
-      ? releaseVerification.releaseTag === 'v2.4.0'
-        && releaseVerification.sourceCommit === V24_FINAL_SOURCE
-        && releaseVerification.archiveName.startsWith('pulsedagd-v2.4.0-')
+      ? releaseVerification.releaseTag === V24_CORE_RELEASE_IDENTITY.releaseTag
+        && releaseVerification.sourceCommit === V24_CORE_RELEASE_IDENTITY.sourceCommit
+        && releaseVerification.archiveName.startsWith(`pulsedagd-${V24_CORE_RELEASE_IDENTITY.releaseTag}-`)
       : releaseVerification.releaseTag === 'v2.3.0'
     if (!releaseMatchesProfile) {
       setOperationError(
