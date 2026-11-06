@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { StatusCard } from '../components/StatusCard'
-import { isFinalV24NodeProvenance } from '../lib/coreRelease'
+import { isFinalV24NodeProvenance, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
 import { getBinaryProvenance } from '../lib/desktop'
 import type { BinaryInfo, BinaryProvenance, DesktopBridgeStatus, NodePreferences, NodeRuntimeStatus, RpcHealth } from '../types'
 
 type OverviewPageProps = {
+  coreReleaseIdentities: CoreReleaseIdentityRegistry | null
   bridge: DesktopBridgeStatus | null
   preferences: NodePreferences
   binaryInfo: BinaryInfo | null
@@ -15,12 +16,12 @@ type OverviewPageProps = {
   onStart: () => void
 }
 
-export function OverviewPage({ bridge, preferences, binaryInfo, nodeStatus, rpcHealth, busy, onOpenSettings, onStart }: OverviewPageProps) {
+export function OverviewPage({ coreReleaseIdentities,bridge, preferences, binaryInfo, nodeStatus, rpcHealth, busy, onOpenSettings, onStart }: OverviewPageProps) {
   const [binaryProvenance, setBinaryProvenance] = useState<BinaryProvenance | null>(null)
   const configured = preferences.executablePath.trim().length > 0 && preferences.dataDirectory.trim().length > 0
   const online = nodeStatus.running && rpcHealth.reachable
   const privateMode = preferences.configProfile === 'private'
-  const privateProvenanceReady = !privateMode || isFinalV24NodeProvenance(binaryProvenance)
+  const privateProvenanceReady = !privateMode || isFinalV24NodeProvenance(binaryProvenance, coreReleaseIdentities)
   const readiness = [true, Boolean(binaryInfo), rpcHealth.reachable, nodeStatus.running].filter(Boolean).length
 
   useEffect(() => {
