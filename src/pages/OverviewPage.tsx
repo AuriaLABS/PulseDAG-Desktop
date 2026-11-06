@@ -16,7 +16,7 @@ type OverviewPageProps = {
   onStart: () => void
 }
 
-export function OverviewPage({ coreReleaseIdentities,bridge, preferences, binaryInfo, nodeStatus, rpcHealth, busy, onOpenSettings, onStart }: OverviewPageProps) {
+export function OverviewPage({ coreReleaseIdentities, bridge, preferences, binaryInfo, nodeStatus, rpcHealth, busy, onOpenSettings, onStart }: OverviewPageProps) {
   const [binaryProvenance, setBinaryProvenance] = useState<BinaryProvenance | null>(null)
   const configured = preferences.executablePath.trim().length > 0 && preferences.dataDirectory.trim().length > 0
   const online = nodeStatus.running && rpcHealth.reachable
