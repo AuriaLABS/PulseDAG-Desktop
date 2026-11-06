@@ -14,12 +14,14 @@ export type CoreReleaseIdentityRegistry = {
   v30: CoreReleaseIdentity
 }
 
+function isCanonicalSha(value: string | null | undefined): boolean {
+  return typeof value === 'string' && /^[0-9a-f]{40}$/.test(value)
+}
+
 export function isFrozenCoreReleaseIdentity(identity: CoreReleaseIdentity | null | undefined): boolean {
   return identity?.freezeState === 'frozen'
-    && typeof identity.sourceCommit === 'string'
-    && identity.sourceCommit.length === 40
-    && typeof identity.sourceTree === 'string'
-    && identity.sourceTree.length === 40
+    && isCanonicalSha(identity.sourceCommit)
+    && isCanonicalSha(identity.sourceTree)
 }
 
 export function matchesCoreReleaseArchive(
@@ -47,7 +49,8 @@ export function isFinalV24NodeProvenance(
   proof: BinaryProvenance | null,
   registry: CoreReleaseIdentityRegistry | null,
 ): boolean {
-  return matchesCoreNodeProvenance(proof, registry?.v24)
+  return registry?.v24.releaseTag === 'v2.4.0'
+    && matchesCoreNodeProvenance(proof, registry.v24)
 }
 
 export function matchesCoreMinerProvenance(
@@ -64,5 +67,6 @@ export function isFinalV24MinerProvenance(
   proof: BinaryProvenance | null,
   registry: CoreReleaseIdentityRegistry | null,
 ): boolean {
-  return matchesCoreMinerProvenance(proof, registry?.v24)
+  return registry?.v24.releaseTag === 'v2.4.0'
+    && matchesCoreMinerProvenance(proof, registry.v24)
 }
