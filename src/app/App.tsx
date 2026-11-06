@@ -10,6 +10,7 @@ import {
   exportDiagnostics,
   getBinaryProvenance,
   getDesktopBridgeStatus,
+  getCoreReleaseIdentities,
   getMinerLogs,
   getMinerStatus,
   getNodeLogs,
@@ -31,7 +32,7 @@ import {
   validateNodeBinary,
   verifyApprovedReleaseArchive,
 } from '../lib/desktop'
-import { V24_CORE_RELEASE_IDENTITY } from '../lib/coreRelease'
+import { matchesCoreReleaseArchive, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
 import {
   bindV24NodeBinaryToVerifiedArchive,
   selectV24ReleaseArchive,
@@ -119,6 +120,7 @@ export function App() {
   const [section, setSection] = useState<AppSection>('overview')
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('pulsedag.desktop.theme') === 'light' ? 'light' : 'dark'))
   const [bridge, setBridge] = useState<DesktopBridgeStatus | null>(null)
+  const [coreReleaseIdentities, setCoreReleaseIdentities] = useState<CoreReleaseIdentityRegistry | null>(null)
   const [preferences, setPreferences] = useState<NodePreferences>(() => loadNodePreferences())
   const [binaryInfo, setBinaryInfo] = useState<BinaryInfo | null>(null)
   const [minerBinaryInfo, setMinerBinaryInfo] = useState<BinaryInfo | null>(null)
@@ -148,6 +150,9 @@ export function App() {
       getDesktopBridgeStatus().then(setBridge),
       getBinaryProvenance().then(setBinaryProvenance),
     ])
+    void getCoreReleaseIdentities()
+      .then(setCoreReleaseIdentities)
+      .catch(() => setCoreReleaseIdentities(null))
   }, [])
 
   const refreshRuntime = useCallback(async () => {
@@ -385,9 +390,7 @@ export function App() {
       return null
     }
     const releaseMatchesProfile = profile === 'private'
-      ? releaseVerification.releaseTag === V24_CORE_RELEASE_IDENTITY.releaseTag
-        && releaseVerification.sourceCommit === V24_CORE_RELEASE_IDENTITY.sourceCommit
-        && releaseVerification.archiveName.startsWith(`pulsedagd-${V24_CORE_RELEASE_IDENTITY.releaseTag}-`)
+      ? matchesCoreReleaseArchive(releaseVerification, coreReleaseIdentities?.v24, 'pulsedagd')
       : releaseVerification.releaseTag === 'v2.3.0'
     if (!releaseMatchesProfile) {
       setOperationError(
@@ -519,6 +522,7 @@ export function App() {
   if (section === 'overview') {
     content = (
       <OverviewPage
+        coreReleaseIdentities={coreReleaseIdentities}
         bridge={bridge}
         preferences={preferences}
         binaryInfo={binaryInfo}
@@ -532,6 +536,7 @@ export function App() {
   } else if (section === 'node') {
     content = (
       <NodePage
+        coreReleaseIdentities={coreReleaseIdentities}
         preferences={preferences}
         binaryInfo={binaryInfo}
         nodeStatus={nodeStatus}
@@ -548,6 +553,7 @@ export function App() {
   } else if (section === 'mining') {
     content = (
       <MiningPage
+        coreReleaseIdentities={coreReleaseIdentities}
         preferences={preferences}
         minerBinaryInfo={minerBinaryInfo}
         minerStatus={minerStatus}
@@ -568,6 +574,7 @@ export function App() {
   } else if (section === 'settings') {
     content = (
       <SettingsPage
+        coreReleaseIdentities={coreReleaseIdentities}
         value={preferences}
         binaryInfo={binaryInfo}
         releaseVerification={releaseVerification}

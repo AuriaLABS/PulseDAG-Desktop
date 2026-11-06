@@ -252,6 +252,7 @@ pub fn run() {
         .manage(MinerProvenanceRegistry::default())
         .invoke_handler(tauri::generate_handler![
             get_desktop_status,
+            get_core_release_identities,
             discover_node_binary,
             validate_node_binary,
             verify_approved_release_archive,
