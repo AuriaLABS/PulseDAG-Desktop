@@ -5,7 +5,7 @@ import {
   selectMinerReleaseArchive,
   verifyApprovedMinerReleaseArchive,
 } from '../lib/desktop'
-import { V24_CORE_RELEASE_IDENTITY, isFinalV24MinerProvenance } from '../lib/coreRelease'
+import { matchesCoreReleaseArchive, isFinalV24MinerProvenance, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
 import {
   bindV24MinerBinaryToVerifiedArchive,
   selectV24ReleaseArchive,
@@ -23,6 +23,7 @@ import type {
 } from '../types'
 
 type MiningPageProps = {
+  coreReleaseIdentities: CoreReleaseIdentityRegistry | null
   preferences: NodePreferences
   minerBinaryInfo: BinaryInfo | null
   minerStatus: MinerRuntimeStatus
@@ -68,6 +69,7 @@ function readableError(error: unknown): string {
 }
 
 export function MiningPage({
+  coreReleaseIdentities,
   preferences,
   minerBinaryInfo,
   minerStatus,
@@ -201,13 +203,10 @@ export function MiningPage({
     && draft.minerAddress.trim().length > 0
   const nodeReady = nodeStatus.running && rpcHealth.reachable
   const privateMode = draft.configProfile === 'private'
-  const privateHasFinalProvenance = isFinalV24MinerProvenance(minerProvenance)
+  const privateHasFinalProvenance = isFinalV24MinerProvenance(minerProvenance, coreReleaseIdentities)
   const privateBlocked = privateMode && !privateHasFinalProvenance
   const releaseMatchesProfile = privateMode
-    ? releaseVerification?.approved
-      && releaseVerification.releaseTag === V24_CORE_RELEASE_IDENTITY.releaseTag
-      && releaseVerification.sourceCommit === V24_CORE_RELEASE_IDENTITY.sourceCommit
-      && releaseVerification.archiveName.startsWith(`pulsedag-miner-${V24_CORE_RELEASE_IDENTITY.releaseTag}-`)
+    ? matchesCoreReleaseArchive(releaseVerification, coreReleaseIdentities?.v24, 'pulsedag-miner')
     : releaseVerification?.approved && releaseVerification.releaseTag === 'v2.3.0'
   const telemetry = minerStatus.telemetry
 
