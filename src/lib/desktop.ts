@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import type { CoreReleaseIdentityRegistry } from './coreRelease'
 import type {
   BinaryInfo,
   BinaryProvenance,
@@ -84,6 +85,11 @@ function normalizeInteger(value: unknown, fallback: number, minimum: number, max
   return typeof value === 'number' && Number.isInteger(value)
     ? Math.min(maximum, Math.max(minimum, value))
     : fallback
+}
+
+/** No browser fallback: unavailable native identity must never authorize release linking. */
+export function getCoreReleaseIdentities(): Promise<CoreReleaseIdentityRegistry> {
+  return invoke<CoreReleaseIdentityRegistry>('get_core_release_identities')
 }
 
 export async function getDesktopBridgeStatus(): Promise<DesktopBridgeStatus> {
