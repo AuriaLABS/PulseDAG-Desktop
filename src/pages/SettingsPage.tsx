@@ -245,10 +245,14 @@ export function SettingsPage({
             <div><span>Private profile</span><strong>{privateMode ? 'Final v2.4 proof only' : 'Proof required when selected'}</strong></div>
             <div><span>Core identity source</span><strong>{coreReleaseIdentities ? 'Native registry' : 'Unavailable · fail-closed'}</strong></div>
             <div><span>Core v3.0.0 target</span><strong>{coreReleaseIdentities?.v30.freezeState ?? 'Unavailable'}</strong></div>
+            <div><span>Public testnet GO</span><strong>{coreReleaseIdentities?.publicTestnet?.goState === 'authorized' ? 'Authorization recorded (metadata only)' : 'NOT AUTHORIZED'}</strong></div>
+            <div><span>Mainnet GO</span><strong>{coreReleaseIdentities?.mainnet?.goState === 'authorized' ? 'Authorization recorded (metadata only)' : 'NOT AUTHORIZED'}</strong></div>
+            <div><span>Testnet chain identity</span><strong>{coreReleaseIdentities?.publicTestnet?.chainId ?? 'Not frozen'}</strong></div>
+            <div><span>Mainnet chain identity</span><strong>{coreReleaseIdentities?.mainnet?.chainId ?? 'Not frozen'}</strong></div>
             <div><span>Admin RPC</span><strong>Forced off</strong></div>
             <div><span>RPC exposure</span><strong>Loopback only</strong></div>
             <div><span>P2P in private v2.4</span><strong>Forced off</strong></div>
-            <div><span>Public-testnet clock</span><strong>Forced off</strong></div>
+            <div><span>Legacy v2.4 testnet clock</span><strong>Forced off</strong></div>
             <div><span>Contracts</span><strong>Forced off</strong></div>
             <div><span>Secrets</span><strong>Not accepted</strong></div>
             <div><span>Stop policy</span><strong>TERM, then kill</strong></div>
