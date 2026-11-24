@@ -204,11 +204,11 @@ mod core_release_identity_tests {
         let testnet = CoreV3NetworkReleaseGate {
             go_state: CoreV3NetworkGoState::Authorized,
             chain_id: Some("fixture-testnet"),
-            genesis_hash: Some("a".repeat(64).leak()),
+            genesis_hash: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             signing_domain: Some("fixture-signing-testnet"),
-            config_digest: Some("b".repeat(64).leak()),
-            source_commit: Some("c".repeat(40).leak()),
-            go_evidence_digest: Some("d".repeat(64).leak()),
+            config_digest: Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+            source_commit: Some("cccccccccccccccccccccccccccccccccccccccc"),
+            go_evidence_digest: Some("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
             ..V3_PUBLIC_TESTNET_RELEASE_GATE
         };
         assert!(testnet.has_exact_go_record(CoreV3PublicNetworkStage::PublicTestnet));
@@ -223,15 +223,16 @@ mod core_release_identity_tests {
         assert!(!testnet.has_separate_identity_from(reused));
         let valid_other = CoreV3NetworkReleaseGate {
             chain_id: Some("fixture-mainnet"),
-            genesis_hash: Some("e".repeat(64).leak()),
+            genesis_hash: Some("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
             signing_domain: Some("fixture-signing-mainnet"),
             ..reused
         };
         assert!(testnet.has_separate_identity_from(valid_other));
-        assert!(!CoreV3NetworkReleaseGate {
+        let missing_go_evidence = CoreV3NetworkReleaseGate {
             go_evidence_digest: None,
             ..valid_other
-        }.has_exact_go_record(CoreV3PublicNetworkStage::Mainnet));
+        };
+        assert!(!missing_go_evidence.has_exact_go_record(CoreV3PublicNetworkStage::Mainnet));
     }
 
     #[test]
