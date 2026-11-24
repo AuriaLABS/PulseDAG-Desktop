@@ -30,6 +30,10 @@ jobs:
           node-version: 22
       - run: node .github/scripts/check-desktop-version.mjs
       - run: node .github/scripts/prepare-testnet-version.mjs check
+      - name: Prove ephemeral testnet versions can be prepared
+        run: node .github/scripts/prepare-testnet-version.mjs prepare
+      - name: Verify prepared npm/Cargo and testnet Tauri versions
+        run: node .github/scripts/prepare-testnet-version.mjs verify-prepared
 
   internal-preview:
     name: Internal unsigned preview only / ${{ matrix.label }}
