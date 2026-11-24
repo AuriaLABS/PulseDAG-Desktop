@@ -33,6 +33,7 @@ import {
   verifyApprovedReleaseArchive,
 } from '../lib/desktop'
 import { matchesCoreReleaseArchive, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
+import { isTestnetPreviewBuild, themeStorageKey } from '../lib/releaseChannel'
 import {
   bindV24NodeBinaryToVerifiedArchive,
   selectV24ReleaseArchive,
@@ -118,7 +119,7 @@ function readableError(error: unknown): string {
 
 export function App() {
   const [section, setSection] = useState<AppSection>('overview')
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('pulsedag.desktop.theme') === 'light' ? 'light' : 'dark'))
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem(themeStorageKey) === 'light' ? 'light' : 'dark'))
   const [bridge, setBridge] = useState<DesktopBridgeStatus | null>(null)
   const [coreReleaseIdentities, setCoreReleaseIdentities] = useState<CoreReleaseIdentityRegistry | null>(null)
   const [preferences, setPreferences] = useState<NodePreferences>(() => loadNodePreferences())
@@ -142,7 +143,7 @@ export function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    localStorage.setItem('pulsedag.desktop.theme', theme)
+    localStorage.setItem(themeStorageKey, theme)
   }, [theme])
 
   useEffect(() => {
@@ -642,6 +643,11 @@ export function App() {
             <button className="icon-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">{theme === 'dark' ? '☼' : '◐'}</button>
           </div>
         </header>
+        {isTestnetPreviewBuild && (
+          <div className="notice notice-warning" role="status">
+            PulseDAG Desktop 0.1.0-testnet.1 — INTERNAL PREVIEW ONLY. Public v3 testnet NO-GO; test coins have no monetary value, the network may reset, and no v3 mining or mainnet access is authorized.
+          </div>
+        )}
         {showGlobalOperationError && <div className="notice notice-error">{operationError}</div>}
         {!configured && section !== 'settings' && <div className="notice notice-warning">Select pulsedagd and a persistent data directory before starting the node.</div>}
         {content}
