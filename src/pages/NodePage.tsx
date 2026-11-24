@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { isFinalV24NodeProvenance } from '../lib/coreRelease'
+import { isFinalV24NodeProvenance, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
 import { getBinaryProvenance } from '../lib/desktop'
 import type { BinaryInfo, BinaryProvenance, NodePreferences, NodeRuntimeStatus, RpcHealth } from '../types'
 
 type NodePageProps = {
+  coreReleaseIdentities: CoreReleaseIdentityRegistry | null
   preferences: NodePreferences
   binaryInfo: BinaryInfo | null
   nodeStatus: NodeRuntimeStatus
@@ -17,11 +18,11 @@ type NodePageProps = {
   onOpenSettings: () => void
 }
 
-export function NodePage({ preferences, binaryInfo, nodeStatus, rpcHealth, busy, error, onStart, onStop, onRestart, onValidate, onOpenSettings }: NodePageProps) {
+export function NodePage({ coreReleaseIdentities, preferences, binaryInfo, nodeStatus, rpcHealth, busy, error, onStart, onStop, onRestart, onValidate, onOpenSettings }: NodePageProps) {
   const [binaryProvenance, setBinaryProvenance] = useState<BinaryProvenance | null>(null)
   const configured = preferences.executablePath.trim().length > 0 && preferences.dataDirectory.trim().length > 0
   const privateMode = preferences.configProfile === 'private'
-  const privateProvenanceReady = !privateMode || isFinalV24NodeProvenance(binaryProvenance)
+  const privateProvenanceReady = !privateMode || isFinalV24NodeProvenance(binaryProvenance, coreReleaseIdentities)
   const startBlocked = busy || (!nodeStatus.running && (!configured || !privateProvenanceReady))
 
   useEffect(() => {
