@@ -107,6 +107,8 @@ impl CoreV3NetworkReleaseGate {
             && self.chain_id != other.chain_id
             && self.genesis_hash != other.genesis_hash
             && self.signing_domain != other.signing_domain
+            && self.config_digest != other.config_digest
+            && self.go_evidence_digest != other.go_evidence_digest
     }
 }
 
@@ -225,6 +227,8 @@ mod core_release_identity_tests {
             chain_id: Some("fixture-mainnet"),
             genesis_hash: Some("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
             signing_domain: Some("fixture-signing-mainnet"),
+            config_digest: Some("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+            go_evidence_digest: Some("1111111111111111111111111111111111111111111111111111111111111111"),
             ..reused
         };
         assert!(testnet.has_separate_identity_from(valid_other));
