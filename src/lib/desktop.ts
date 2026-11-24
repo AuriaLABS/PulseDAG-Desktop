@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import { nodePreferencesStorageKey } from './releaseChannel'
 import type { CoreReleaseIdentityRegistry } from './coreRelease'
 import type {
   BinaryInfo,
@@ -339,7 +340,7 @@ export async function exportDiagnostics(
 }
 
 export function loadNodePreferences(): NodePreferences {
-  const raw = localStorage.getItem('pulsedag.desktop.node-preferences')
+  const raw = localStorage.getItem(nodePreferencesStorageKey)
   if (!raw) return defaultPreferences
 
   try {
@@ -367,5 +368,5 @@ export function loadNodePreferences(): NodePreferences {
 }
 
 export function saveNodePreferences(preferences: NodePreferences): void {
-  localStorage.setItem('pulsedag.desktop.node-preferences', JSON.stringify(preferences))
+  localStorage.setItem(nodePreferencesStorageKey, JSON.stringify(preferences))
 }
