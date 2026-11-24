@@ -53,11 +53,94 @@ pub(crate) const V3_0_CORE_RELEASE_IDENTITY: CoreReleaseIdentity = CoreReleaseId
     freeze_state: CoreReleaseFreezeState::Pending,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum CoreV3PublicNetworkStage {
+    PublicTestnet,
+    Mainnet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum CoreV3NetworkGoState {
+    NotAuthorized,
+    Authorized,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CoreV3NetworkReleaseGate {
+    stage: CoreV3PublicNetworkStage,
+    go_state: CoreV3NetworkGoState,
+    chain_id: Option<&'static str>,
+    genesis_hash: Option<&'static str>,
+    signing_domain: Option<&'static str>,
+    config_digest: Option<&'static str>,
+    source_commit: Option<&'static str>,
+    go_evidence_digest: Option<&'static str>,
+}
+
+impl CoreV3NetworkReleaseGate {
+    /// Metadata-only guard: a testnet GO must never be interpreted as mainnet GO.
+    /// This is not a launcher or a substitute for the Core #781 authorization.
+    fn has_exact_go_record(self, stage: CoreV3PublicNetworkStage) -> bool {
+        fn hex_digest(value: Option<&str>, length: usize) -> bool {
+            value.is_some_and(|text| {
+                text.len() == length
+                    && text.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            })
+        }
+        self.stage == stage
+            && self.go_state == CoreV3NetworkGoState::Authorized
+            && self.chain_id.is_some_and(|value| !value.is_empty())
+            && self.signing_domain.is_some_and(|value| !value.is_empty())
+            && hex_digest(self.genesis_hash, 64)
+            && hex_digest(self.config_digest, 64)
+            && hex_digest(self.source_commit, 40)
+            && hex_digest(self.go_evidence_digest, 64)
+    }
+
+    fn has_separate_identity_from(self, other: Self) -> bool {
+        self.stage != other.stage
+            && self.has_exact_go_record(self.stage)
+            && other.has_exact_go_record(other.stage)
+            && self.chain_id != other.chain_id
+            && self.genesis_hash != other.genesis_hash
+            && self.signing_domain != other.signing_domain
+    }
+}
+
+// No GO is pinned: Core #781 currently records NO-GO for both stages.
+// Source/network artifacts and identity must remain absent until exact evidence.
+const V3_PUBLIC_TESTNET_RELEASE_GATE: CoreV3NetworkReleaseGate = CoreV3NetworkReleaseGate {
+    stage: CoreV3PublicNetworkStage::PublicTestnet,
+    go_state: CoreV3NetworkGoState::NotAuthorized,
+    chain_id: None,
+    genesis_hash: None,
+    signing_domain: None,
+    config_digest: None,
+    source_commit: None,
+    go_evidence_digest: None,
+};
+
+const V3_MAINNET_RELEASE_GATE: CoreV3NetworkReleaseGate = CoreV3NetworkReleaseGate {
+    stage: CoreV3PublicNetworkStage::Mainnet,
+    go_state: CoreV3NetworkGoState::NotAuthorized,
+    chain_id: None,
+    genesis_hash: None,
+    signing_domain: None,
+    config_digest: None,
+    source_commit: None,
+    go_evidence_digest: None,
+};
+
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CoreReleaseIdentityRegistry {
     v24: CoreReleaseIdentity,
     v30: CoreReleaseIdentity,
+    public_testnet: CoreV3NetworkReleaseGate,
+    mainnet: CoreV3NetworkReleaseGate,
 }
 
 /// Read-only identity metadata. This command does not grant release trust or
@@ -67,6 +150,8 @@ fn get_core_release_identities() -> CoreReleaseIdentityRegistry {
     CoreReleaseIdentityRegistry {
         v24: V2_4_CORE_RELEASE_IDENTITY,
         v30: V3_0_CORE_RELEASE_IDENTITY,
+        public_testnet: V3_PUBLIC_TESTNET_RELEASE_GATE,
+        mainnet: V3_MAINNET_RELEASE_GATE,
     }
 }
 
@@ -88,6 +173,65 @@ mod core_release_identity_tests {
         assert_eq!(json["v30"]["releaseTag"], "v3.0.0");
         assert!(json["v30"]["sourceCommit"].is_null());
         assert!(json["v30"]["sourceTree"].is_null());
+    }
+
+    #[test]
+    fn core_release_identity_staged_v3_network_gates_are_separate_and_not_authorized() {
+        let registry = get_core_release_identities();
+        let testnet = registry.public_testnet;
+        let mainnet = registry.mainnet;
+        assert!(!testnet.has_exact_go_record(CoreV3PublicNetworkStage::PublicTestnet));
+        assert!(!testnet.has_exact_go_record(CoreV3PublicNetworkStage::Mainnet));
+        assert!(!mainnet.has_exact_go_record(CoreV3PublicNetworkStage::Mainnet));
+        assert!(!testnet.has_separate_identity_from(mainnet));
+
+        let payload = serde_json::to_value(registry).unwrap();
+        assert_eq!(payload["publicTestnet"]["stage"], "public_testnet");
+        assert_eq!(payload["publicTestnet"]["goState"], "not_authorized");
+        assert!(payload["publicTestnet"]["chainId"].is_null());
+        assert!(payload["publicTestnet"]["genesisHash"].is_null());
+        assert!(payload["publicTestnet"]["goEvidenceDigest"].is_null());
+        assert_eq!(payload["mainnet"]["stage"], "mainnet");
+        assert_eq!(payload["mainnet"]["goState"], "not_authorized");
+        assert!(payload["mainnet"]["sourceCommit"].is_null());
+        assert!(payload["mainnet"]["configDigest"].is_null());
+        assert!(payload["v30"]["sourceCommit"].is_null());
+    }
+
+    #[test]
+    fn core_release_identity_testnet_go_fixture_never_grants_mainnet_go() {
+        // Synthetic inputs only. These are NOT approved PulseDAG chain identities.
+        let testnet = CoreV3NetworkReleaseGate {
+            go_state: CoreV3NetworkGoState::Authorized,
+            chain_id: Some("fixture-testnet"),
+            genesis_hash: Some("a".repeat(64).leak()),
+            signing_domain: Some("fixture-signing-testnet"),
+            config_digest: Some("b".repeat(64).leak()),
+            source_commit: Some("c".repeat(40).leak()),
+            go_evidence_digest: Some("d".repeat(64).leak()),
+            ..V3_PUBLIC_TESTNET_RELEASE_GATE
+        };
+        assert!(testnet.has_exact_go_record(CoreV3PublicNetworkStage::PublicTestnet));
+        assert!(!testnet.has_exact_go_record(CoreV3PublicNetworkStage::Mainnet));
+        assert!(!V3_MAINNET_RELEASE_GATE.has_exact_go_record(CoreV3PublicNetworkStage::Mainnet));
+
+        // Synthetic second stage: even explicit GO cannot reuse testnet identity.
+        let reused = CoreV3NetworkReleaseGate {
+            stage: CoreV3PublicNetworkStage::Mainnet,
+            ..testnet
+        };
+        assert!(!testnet.has_separate_identity_from(reused));
+        let valid_other = CoreV3NetworkReleaseGate {
+            chain_id: Some("fixture-mainnet"),
+            genesis_hash: Some("e".repeat(64).leak()),
+            signing_domain: Some("fixture-signing-mainnet"),
+            ..reused
+        };
+        assert!(testnet.has_separate_identity_from(valid_other));
+        assert!(!CoreV3NetworkReleaseGate {
+            go_evidence_digest: None,
+            ..valid_other
+        }.has_exact_go_record(CoreV3PublicNetworkStage::Mainnet));
     }
 
     #[test]
