@@ -5,6 +5,7 @@ import {
   selectMinerReleaseArchive,
   verifyApprovedMinerReleaseArchive,
 } from '../lib/desktop'
+import { isTestnetPreviewBuild } from '../lib/releaseChannel'
 import { matchesCoreReleaseArchive, isFinalV24MinerProvenance, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
 import {
   bindV24MinerBinaryToVerifiedArchive,
@@ -342,9 +343,9 @@ export function MiningPage({
               className="primary-button"
               type="button"
               onClick={minerStatus.running ? onStop : onStart}
-              disabled={busy || (!minerStatus.running && (!configured || !nodeReady || privateBlocked))}
+              disabled={busy || (!minerStatus.running && (isTestnetPreviewBuild || !configured || !nodeReady || privateBlocked))}
             >
-              {busy ? 'Working…' : minerStatus.running ? 'Stop miner' : 'Start mining'}
+              {busy ? 'Working…' : minerStatus.running ? 'Stop miner' : isTestnetPreviewBuild ? 'Mining disabled — preview' : 'Start mining'}
             </button>
           </div>
         </form>
