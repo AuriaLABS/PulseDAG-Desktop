@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PulseDAG Desktop Testnet",
+  "version": "0.1.0-testnet.1",
+  "identifier": "io.aurialabs.pulsedag.desktop.testnet",
+  "app": {
+    "windows": [
+      {
+        "title": "PulseDAG Desktop Testnet — PREVIEW ONLY",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ]
+  },
+  "bundle": {
+    "shortDescription": "PulseDAG public-testnet Desktop preview — no live network authorization",
+    "longDescription": "Separate testnet-only preview. No public v3.0 testnet GO or monetary mining authorization is implied. Do not use for mainnet, custody or production."
+  }
+}

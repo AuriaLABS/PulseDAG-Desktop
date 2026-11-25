@@ -1,0 +1,88 @@
+name: Desktop testnet preview metadata (NO-GO)
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/prepare-testnet-version.mjs"
+      - ".github/workflows/testnet-preview.yml"
+      - "src-tauri/tauri.testnet.conf.json"
+      - "src/lib/releaseChannel.ts"
+      - "src/lib/desktop.ts"
+      - "src/app/App.tsx"
+  workflow_dispatch:
+    inputs:
+      internal_preview_ack:
+        description: "Type INTERNAL_PREVIEW_ONLY; not an authorization to publish or start v3 testnet"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    name: Verify separate stable and testnet versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/scripts/check-desktop-version.mjs
+      - run: node .github/scripts/prepare-testnet-version.mjs check
+      - name: Prove ephemeral testnet versions can be prepared
+        run: node .github/scripts/prepare-testnet-version.mjs prepare
+      - name: Verify prepared npm/Cargo and testnet Tauri versions
+        run: node .github/scripts/prepare-testnet-version.mjs verify-prepared
+
+  internal-preview:
+    name: Internal unsigned preview only / ${{ matrix.label }}
+    if: github.event_name == 'workflow_dispatch' && inputs.internal_preview_ack == 'INTERNAL_PREVIEW_ONLY'
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x86_64
+            os: ubuntu-24.04
+            bundles: deb,appimage
+          - label: Windows x86_64
+            os: windows-2022
+            bundles: nsis,msi
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      VITE_PULSEDAG_DESKTOP_CHANNEL: testnet
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux bundle dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+      - name: Install JavaScript dependencies
+        run: npm install
+      - name: Verify stable checkout and independent testnet overlay
+        run: |
+          node .github/scripts/check-desktop-version.mjs
+          node .github/scripts/prepare-testnet-version.mjs check
+      - name: Prepare temporary testnet npm and Cargo versions
+        run: node .github/scripts/prepare-testnet-version.mjs prepare
+      - name: Reject mismatched testnet metadata
+        run: node .github/scripts/prepare-testnet-version.mjs verify-prepared
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+      - name: Typecheck frontend
+        run: npm run typecheck
+      - name: Build unsigned isolated testnet Desktop preview
+        run: >-
+          npm run tauri build --
+          --config src-tauri/tauri.testnet.conf.json
+          --bundles ${{ matrix.bundles }}
+      # Do NOT upload artifacts, tag releases, create public assets, or enable v3 mining.
+      # This only proves that the distinct pre-release installer can be built.
