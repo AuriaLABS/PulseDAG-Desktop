@@ -645,7 +645,7 @@ export function App() {
         </header>
         {isTestnetPreviewBuild && (
           <div className="notice notice-warning" role="status">
-            PulseDAG Desktop 0.1.0-testnet.1 — INTERNAL PREVIEW ONLY. Public v3 testnet NO-GO; test coins have no monetary value, the network may reset, and no v3 mining or mainnet access is authorized.
+            PulseDAG Desktop 0.1.0-testnet.1 — INTERNAL PREVIEW ONLY. Public v3 testnet NO-GO: native node and miner launches are disabled. Future test coins have no monetary value and the network may reset. This is not a mainnet release.
           </div>
         )}
         {showGlobalOperationError && <div className="notice notice-error">{operationError}</div>}
