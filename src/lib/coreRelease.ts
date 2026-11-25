@@ -9,9 +9,26 @@ export type CoreReleaseIdentity = {
   freezeState: CoreReleaseFreezeState
 }
 
+export type CoreV3NetworkStage = 'public_testnet' | 'mainnet'
+export type CoreV3NetworkGoState = 'not_authorized' | 'authorized'
+
+/** Read-only native build metadata, not a live GO query or a launch command. */
+export type CoreV3NetworkReleaseGate = {
+  stage: CoreV3NetworkStage
+  goState: CoreV3NetworkGoState
+  chainId: string | null
+  genesisHash: string | null
+  signingDomain: string | null
+  configDigest: string | null
+  sourceCommit: string | null
+  goEvidenceDigest: string | null
+}
+
 export type CoreReleaseIdentityRegistry = {
   v24: CoreReleaseIdentity
   v30: CoreReleaseIdentity
+  publicTestnet: CoreV3NetworkReleaseGate
+  mainnet: CoreV3NetworkReleaseGate
 }
 
 function isCanonicalSha(value: string | null | undefined): boolean {
