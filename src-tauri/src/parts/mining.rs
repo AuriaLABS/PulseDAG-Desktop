@@ -519,7 +519,9 @@ fn get_miner_status(state: State<'_, MinerSupervisor>) -> Result<MinerRuntimeSta
 fn start_miner(
     config: MinerLaunchConfig,
     state: State<'_, MinerSupervisor>,
+    app: AppHandle,
 ) -> Result<MinerRuntimeStatus, String> {
+    reject_testnet_preview_launch(&app)?;
     let binary = validate_miner_binary_path(Path::new(config.executable_path.trim()))?;
     let parsed = parse_local_rpc_endpoint(&config.node_endpoint)?;
     TcpStream::connect_timeout(&parsed.socket_addr, Duration::from_millis(1_500))
