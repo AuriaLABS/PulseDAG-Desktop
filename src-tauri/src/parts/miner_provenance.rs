@@ -540,7 +540,9 @@ fn start_verified_miner(
     config: MinerLaunchConfig,
     supervisor: State<'_, MinerSupervisor>,
     provenance: State<'_, MinerProvenanceRegistry>,
+    app: AppHandle,
 ) -> Result<MinerRuntimeStatus, String> {
+    reject_testnet_preview_launch(&app)?;
     let profile = config.config_profile.trim().to_ascii_lowercase();
     if profile != "private" {
         return Err("The verified miner launch command is reserved for the private profile.".into());
