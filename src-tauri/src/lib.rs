@@ -10,6 +10,7 @@ include!("parts/diagnostics.rs");
 include!("parts/v2_4_compat.rs");
 include!("parts/v2_4_release.rs");
 include!("parts/core_release_identity.rs");
+include!("parts/testnet_preview_guard.rs");
 include!("parts/v2_4_private.rs");
 include!("parts/v2_4_state_binding.rs");
 #[cfg(test)]
