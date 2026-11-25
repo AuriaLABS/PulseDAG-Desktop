@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { StatusCard } from '../components/StatusCard'
 import { isFinalV24NodeProvenance, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
+import { isTestnetPreviewBuild } from '../lib/releaseChannel'
 import { getBinaryProvenance } from '../lib/desktop'
 import type { BinaryInfo, BinaryProvenance, DesktopBridgeStatus, NodePreferences, NodeRuntimeStatus, RpcHealth } from '../types'
 
@@ -38,9 +39,11 @@ export function OverviewPage({ coreReleaseIdentities, bridge, preferences, binar
     }
   }, [])
 
-  const primaryAction = nodeStatus.running || (privateMode && !privateProvenanceReady) ? onOpenSettings : onStart
-  const primaryLabel = nodeStatus.running
-    ? 'Review configuration'
+  const primaryAction = isTestnetPreviewBuild || nodeStatus.running || (privateMode && !privateProvenanceReady) ? onOpenSettings : onStart
+  const primaryLabel = isTestnetPreviewBuild
+    ? 'Testnet preview — no node launch'
+    : nodeStatus.running
+      ? 'Review configuration'
     : privateMode && !privateProvenanceReady
       ? 'Verify & link v2.4 release'
       : 'Start node'
@@ -56,7 +59,7 @@ export function OverviewPage({ coreReleaseIdentities, bridge, preferences, binar
           <h2>Your PulseDAG node,<br />from one secure desktop.</h2>
           <p>Validate the exact node executable, supervise the local process and inspect its loopback health without exposing administrative RPC to a browser.</p>
           <div className="hero-actions">
-            <button className="primary-button" onClick={primaryAction} disabled={busy || (!configured && !nodeStatus.running && privateProvenanceReady)}>{primaryLabel}</button>
+            <button className="primary-button" onClick={primaryAction} disabled={isTestnetPreviewBuild || busy || (!configured && !nodeStatus.running && privateProvenanceReady)}>{primaryLabel}</button>
             <button className="secondary-button" onClick={onOpenSettings}>{configured ? 'Settings' : 'Configure node'}</button>
           </div>
         </div>
