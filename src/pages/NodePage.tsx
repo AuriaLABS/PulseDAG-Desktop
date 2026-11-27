@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isFinalV24NodeProvenance, type CoreReleaseIdentityRegistry } from '../lib/coreRelease'
+import { isTestnetPreviewBuild } from '../lib/releaseChannel'
 import { getBinaryProvenance } from '../lib/desktop'
 import type { BinaryInfo, BinaryProvenance, NodePreferences, NodeRuntimeStatus, RpcHealth } from '../types'
 
@@ -23,7 +24,7 @@ export function NodePage({ coreReleaseIdentities, preferences, binaryInfo, nodeS
   const configured = preferences.executablePath.trim().length > 0 && preferences.dataDirectory.trim().length > 0
   const privateMode = preferences.configProfile === 'private'
   const privateProvenanceReady = !privateMode || isFinalV24NodeProvenance(binaryProvenance, coreReleaseIdentities)
-  const startBlocked = busy || (!nodeStatus.running && (!configured || !privateProvenanceReady))
+  const startBlocked = busy || (!nodeStatus.running && (isTestnetPreviewBuild || !configured || !privateProvenanceReady))
 
   useEffect(() => {
     let cancelled = false
@@ -64,8 +65,8 @@ export function NodePage({ coreReleaseIdentities, preferences, binaryInfo, nodeS
             </div>
           </div>
           <div className="button-row">
-            <button className="primary-button" onClick={nodeStatus.running ? onStop : onStart} disabled={startBlocked}>{busy ? 'Working…' : nodeStatus.running ? 'Stop node' : privateMode && !privateProvenanceReady ? 'Link release before start' : 'Start node'}</button>
-            <button className="secondary-button" onClick={onRestart} disabled={busy || !nodeStatus.running}>Restart</button>
+            <button className="primary-button" onClick={nodeStatus.running ? onStop : onStart} disabled={startBlocked}>{busy ? 'Working…' : nodeStatus.running ? 'Stop node' : isTestnetPreviewBuild ? 'Node launch disabled — preview' : privateMode && !privateProvenanceReady ? 'Link release before start' : 'Start node'}</button>
+            <button className="secondary-button" onClick={onRestart} disabled={busy || isTestnetPreviewBuild || !nodeStatus.running}>Restart</button>
             <button className="secondary-button" onClick={onValidate} disabled={busy || !preferences.executablePath}>Validate binary</button>
             <button className="secondary-button" onClick={onOpenSettings}>Configure</button>
           </div>

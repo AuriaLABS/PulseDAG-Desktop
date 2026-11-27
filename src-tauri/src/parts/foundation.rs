@@ -15,7 +15,7 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use url::{Host, Url};
 
 const MAX_LOG_ENTRIES: usize = 5_000;

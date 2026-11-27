@@ -72,7 +72,9 @@ fn get_node_status(state: State<'_, NodeSupervisor>) -> Result<NodeRuntimeStatus
 fn start_node(
     config: NodeLaunchConfig,
     state: State<'_, NodeSupervisor>,
+    app: AppHandle,
 ) -> Result<NodeRuntimeStatus, String> {
+    reject_testnet_preview_launch(&app)?;
     let binary = validate_binary_path(Path::new(config.executable_path.trim()))?;
     let rpc = parse_local_rpc_endpoint(&config.rpc_endpoint)?;
     let profile = config.config_profile.trim().to_ascii_lowercase();

@@ -33,6 +33,26 @@ after meaningful public-testnet evidence, not just a successful testnet build.
 - Manual CI preview builds run without artifact upload, release publication
   or monetary/contract network activation.
 
+## Native launch admission while NO-GO
+
+The internal `0.1.0-testnet.1` installer is **non-operational** until
+the release owner separately approves a real, provenance-bound Core v3
+testnet candidate. It intentionally refuses `start_node`, `start_miner`
+and `start_verified_miner` in the **native Tauri backend** when either the
+installed app identifier is the testnet identifier or its Cargo version
+contains `-testnet.`. UI buttons are also disabled. This prevents a
+manually packaged preview from launching the old v2.4 miner/node while
+appearing to be the future public testnet.
+
+The Tauri build script rejects mismatched native prerelease package
+version and `VITE_PULSEDAG_DESKTOP_CHANNEL`, so a testnet installer cannot
+accidentally include an unlabelled stable-channel frontend. CI checks
+both stable compatibility and a **real ephemeral testnet Cargo build**
+with the native NO-GO guard. This deliberate block must only be revised
+in a separate reviewed, exactly evidenced testnet-specific integration
+after Core #781 `GO_PUBLIC_TESTNET`. The change must never silently
+open mainnet.
+
 The existing v2.4 local/private development path is not a real v3 public
 testnet, and passing its compatibility checks cannot satisfy the v3 GO gate.
 
