@@ -60,6 +60,10 @@ jobs:
           node .github/scripts/prepare-testnet-version.mjs check
           node .github/scripts/prepare-testnet-version.mjs prepare
           node .github/scripts/prepare-testnet-version.mjs verify-prepared
+      - name: Install JavaScript dependencies for Tauri icons
+        run: npm install
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
       - name: Verify native preview channel guard compiles
         run: cargo check --manifest-path src-tauri/Cargo.toml
       - name: Verify native NO-GO node/miner launch regressions
